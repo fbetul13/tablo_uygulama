@@ -1,5 +1,4 @@
 Flask
 flask_cors
 psycopg2-binary
-streamlit
 pandas 
