@@ -273,7 +273,7 @@ with st.expander("Yeni Kayıt Ekle"):
         role_name = form.text_input("role_name", max_chars=100)
         # permissions başlığı ve kutucuk
         form.markdown("**permissions (JSON):**")
-        permissions = form.text_input("all", value="{}", key="add_permissions_all")
+        permissions = form.text_area("permissions", value="{}", key="add_permissions_json")
         admin_or_not = form.selectbox("admin_or_not", ["Evet", "Hayır"]) == "Evet"
         submitted = form.form_submit_button("Ekle")
         add_data = {
@@ -882,13 +882,13 @@ with st.expander("Kayıt Güncelle"):
             parameters_input = st.text_area("", value=parameters_val, key="update_parameters_json")
             valid_params, params_err = validate_json_input(parameters_input)
             if not valid_params:
-                st.markdown(f'<div style="color:red; font-size:12px;">Hatalı JSON: {params_err}</div>', unsafe_allow_html=True)
+                st.markdown('<div style="color:red; font-size:12px;">Hatalı JSON formatı. Lütfen geçerli bir JSON girin.<br>Örnek: {"embedding_model": "gpt-3", "llm_model": "gpt-3.5-turbo", "temperature": 0.7}</div>', unsafe_allow_html=True)
             # trigger_time (JSON) alanı
             st.markdown("**trigger_time (JSON):**")
             trigger_time_input = st.text_area("", value=pretty_json(assistant_row.get('trigger_time')), key="update_trigger_time_json")
             valid_trigg, trigg_err = validate_json_input(trigger_time_input)
             if not valid_trigg:
-                st.markdown(f'<div style="color:red; font-size:12px;">Hatalı JSON: {trigg_err}</div>', unsafe_allow_html=True)
+                st.markdown('<div style="color:red; font-size:12px;">Hatalı JSON formatı. Lütfen geçerli bir JSON girin.<br>Örnek: {"times": "09:00, 14:00"}</div>', unsafe_allow_html=True)
             if user_options:
                 user_display = st.selectbox("user_id (Users tablosundan)", list(user_options.keys()), index=list(user_options.values()).index(assistant_row.get('user_id', None)) if assistant_row.get('user_id', None) in user_options.values() else 0, key="update_assistant_user_id")
                 update_data['user_id'] = user_options[user_display]
@@ -900,20 +900,26 @@ with st.expander("Kayıt Güncelle"):
             update_data['file_path'] = st.text_area("file_path", value=assistant_row.get('file_path', ''), key="update_file_path")
         if st.button("Güncelle", key="update_button_assistants"):
             if assistant_row and (not valid_params or not valid_trigg):
-                st.error("Lütfen geçerli bir JSON girin!")
+                st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
             elif assistant_row:
                 update_data['parameters'] = json.loads(parameters_input)
                 update_data['trigger_time'] = json.loads(trigger_time_input)
                 try:
                     resp = requests.put(f"{backend_url}/assistants/{update_id}", json=update_data)
                     if resp.status_code == 200:
-                        st.success("Kayıt güncellendi!")
+                        st.session_state["success_message"] = "Kayıt güncellendi!"
                         st.session_state["show_table"] = True
                         st.rerun()
                     else:
-                        st.error("Kayıt güncellenemedi: " + resp.text)
+                        error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
+                        st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+                        if error_msg and not (isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype'))):
+                            st.error(error_msg)
                 except Exception as e:
-                    st.error(f"Kayıt güncellenemedi: {e}")
+                    st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+        else:
+            pass
+
     elif table_name == "Users":
         users = get_users()
         if users:
@@ -942,20 +948,23 @@ with st.expander("Kayıt Güncelle"):
                 update_data['role_id'] = role_name_to_id.get(update_data.pop('role_name'), None)
                 email = update_data.get("e_mail", "")
                 if not is_valid_email(email):
-                    st.error("Lütfen geçerli bir e-posta adresi girin (ör: kisi@site.com)")
+                    st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
                 else:
                     try:
                         resp = requests.put(f"{backend_url}/{endpoint}/{update_id}", json=update_data)
                         if resp.status_code == 200:
-                            st.success("Kayıt güncellendi!")
+                            st.session_state["success_message"] = "Kayıt güncellendi!"
                             st.session_state["show_table"] = True
                             st.rerun()
                         else:
-                            st.error("Kayıt güncellenemedi: " + resp.text)
+                            error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
+                            st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+                            if error_msg and not (isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype'))):
+                                st.error(error_msg)
                     except Exception as e:
-                        st.error(f"Kayıt güncellenemedi: {e}")
+                        st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
         else:
-            st.error("Lütfen güncellenecek ID girin.") 
+            pass
 
     elif table_name == "Roles":
         roles = get_roles()
@@ -967,38 +976,56 @@ with st.expander("Kayıt Güncelle"):
             # role_name güncelleme için ayrı selectbox (benzersiz key)
             role_names = [r['role_name'] for r in roles]
             update_role_name = st.selectbox("Güncellenecek Rol (role_name)", role_names, key="update_role_name_select")
+            # ID seçildiğinde hata mesajını temizle
+            if "roles_update_error" in st.session_state:
+                st.session_state.pop("roles_update_error")
         else:
-            st.success("Güncellenecek rol yok.")
             update_id = None
             role_row = None
         update_data = {}
         if role_row:
             update_data['role_name'] = update_role_name
+            # role_id'yi de ekle
+            update_data['role_id'] = update_id
             # permissions (JSON) alanı
             st.markdown("**permissions (JSON):**")
             permissions_val = pretty_json(role_row.get('permissions'))
             permissions_input = st.text_area("", value=permissions_val, key="update_permissions_json")
             valid_permissions, permissions_err = validate_json_input(permissions_input)
             if not valid_permissions:
-                st.markdown(f'<div style="color:red; font-size:12px;">Hatalı JSON: {permissions_err}</div>', unsafe_allow_html=True)
-            update_data['permissions'] = json.loads(permissions_input) if valid_permissions else {}
+                st.markdown('<div style="color:red; font-size:12px;">Hatalı JSON formatı. Lütfen geçerli bir JSON girin.<br>Örnek: {"permissions": "all"}</div>', unsafe_allow_html=True)
+            try:
+                update_data['permissions'] = json.loads(permissions_input) if permissions_input else {}
+            except Exception:
+                update_data['permissions'] = {}
             update_data['admin_or_not'] = st.selectbox("admin_or_not", ["Evet", "Hayır"], index=0 if role_row.get('admin_or_not', False) else 1, key="update_admin_or_not") == "Evet"
-        if st.button("Güncelle", key="update_button_roles"):
-            if role_row and not valid_permissions:
-                st.error("Lütfen geçerli bir JSON girin!")
-            elif role_row:
-                try:
-                    resp = requests.put(f"{backend_url}/{endpoint}/{update_id}", json=update_data)
-                    if resp.status_code == 200:
-                        st.success("Kayıt güncellendi!")
-                        st.session_state["show_table"] = True
-                        st.rerun()
-                    else:
-                        st.error("Kayıt güncellenemedi: " + resp.text)
-                except Exception as e:
-                    st.error(f"Kayıt güncellenemedi: {e}")
+            # permissions alanını güvenli şekilde dict olarak ata
+            # Teşhis için ekrana yazdırılan satırları kaldırdım
+            if st.button("Güncelle", key="update_button_roles"):
+                missing_fields = check_required_fields(table_options["Roles"]["fields"], update_data)
+                # Zorunlu alan kontrolü fonksiyonunu kullan
+                if missing_fields:
+                    st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+                elif not valid_permissions:
+                    st.error("Kayıt güncellenemedi. Hatalı JSON formatı.")
+                else:
+                    try:
+                        resp = requests.put(f"{backend_url}/{endpoint}/{update_id}", json=update_data)
+                        if resp.status_code == 200:
+                            st.session_state["success_message"] = "Kayıt güncellendi!"
+                            st.session_state["show_table"] = True
+                            st.session_state.pop("roles_update_error", None)
+                            st.rerun()
+                        else:
+                            error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
+                            if error_msg and not (isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype'))):
+                                st.error(error_msg)
+                            else:
+                                st.error("Kayıt güncellenemedi.")
+                    except Exception as e:
+                        st.error(f"Kayıt güncellenemedi. Hata: {e}")
         else:
-            st.error("Lütfen güncellenecek ID girin.") 
+            pass
 
     elif table_name == "Auto Prompt":
         try:
@@ -1035,21 +1062,24 @@ with st.expander("Kayıt Güncelle"):
             update_data['receiver_emails'] = st.text_area("receiver_emails", value=auto_prompt_row.get('receiver_emails', ''), key="update_ap_receiver_emails")
         if st.button("Güncelle", key="update_button_auto_prompt"):
             if auto_prompt_row and not valid_trigg:
-                st.error("Lütfen geçerli bir JSON girin!")
+                st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
             elif auto_prompt_row:
                 update_data['trigger_time'] = json.loads(trigger_time_input)
                 try:
                     resp = requests.put(f"{backend_url}/auto_prompt/{update_id}", json=update_data)
                     if resp.status_code == 200:
-                        st.success("Kayıt güncellendi!")
+                        st.session_state["success_message"] = "Kayıt güncellendi!"
                         st.session_state["show_table"] = True
                         st.rerun()
                     else:
-                        st.error("Kayıt güncellenemedi: " + resp.text)
+                        error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
+                        st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+                        if error_msg and not (isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype'))):
+                            st.error(error_msg)
                 except Exception as e:
-                    st.error(f"Kayıt güncellenemedi: {e}")
+                    st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
         else:
-            st.error("Lütfen güncellenecek ID girin.") 
+            pass
 
     elif table_name == "Data Prepare Modules":
         try:
@@ -1105,20 +1135,23 @@ with st.expander("Kayıt Güncelle"):
         if st.button("Güncelle", key="update_button_dpm"):
             if dpm_row:
                 if (update_data['working_platform'] and len(update_data['working_platform']) > 100) or (update_data['query_name'] and len(update_data['query_name']) > 100):
-                    st.error("Lütfen alanları doğru ve limitlere uygun doldurun.")
+                    st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
                 else:
                     try:
                         resp = requests.put(f"{backend_url}/{endpoint}/{update_id}", json=update_data)
                         if resp.status_code == 200:
-                            st.success("Kayıt güncellendi!")
+                            st.session_state["success_message"] = "Kayıt güncellendi!"
                             st.session_state["show_table"] = True
                             st.rerun()
                         else:
-                            st.error("Kayıt güncellenemedi: " + resp.text)
+                            error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
+                            st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+                            if error_msg and not (isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype'))):
+                                st.error(error_msg)
                     except Exception as e:
-                        st.error(f"Kayıt güncellenemedi: {e}")
+                        st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
         else:
-            st.error("Lütfen güncellenecek ID girin.") 
+            pass
 
     elif table_name == "Database Info":
         try:
@@ -1160,15 +1193,18 @@ with st.expander("Kayıt Güncelle"):
                 try:
                     resp = requests.put(f"{backend_url}/{endpoint}/{update_id}", json=update_data)
                     if resp.status_code == 200:
-                        st.success("Kayıt güncellendi!")
+                        st.session_state["success_message"] = "Kayıt güncellendi!"
                         st.session_state["show_table"] = True
                         st.rerun()
                     else:
-                        st.error("Kayıt güncellenemedi: " + resp.text)
+                        error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
+                        st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+                        if error_msg and not (isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype'))):
+                            st.error(error_msg)
                 except Exception as e:
-                    st.error(f"Kayıt güncellenemedi: {e}")
+                    st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
         else:
-            st.error("Lütfen güncellenecek ID girin.") 
+            pass
 
 # Auto Prompt'taki python_code alanı için Courier fontu
 st.markdown(
