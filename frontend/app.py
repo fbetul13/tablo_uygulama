@@ -600,6 +600,9 @@ with st.expander("Yeni Kayıt Ekle"):
             except Exception as e:
                 form.error(str(e))
     else:
+        # Kullanıcı ekleme formunu sıfırlamak için form key'i kullanalım
+        if 'user_add_form_key' not in st.session_state:
+            st.session_state['user_add_form_key'] = 0
         add_data = {}
         for field in fields:
             fname = field["name"]
@@ -607,22 +610,24 @@ with st.expander("Yeni Kayıt Ekle"):
             if fname in ["create_date", "change_date"]:
                 continue  # Bu alanları atla
             if table_name == "Users" and fname == "role_id":
-                add_data['role_name'] = st.selectbox("Rol", role_names)
+                roles = get_roles()
+                role_names = [r['role_name'] for r in roles]
+                add_data['role_name'] = st.selectbox("Rol", role_names, key=f"add_role_{st.session_state['user_add_form_key']}")
             elif ftype == "bool":
-                add_data[fname] = st.selectbox(fname, ["Evet", "Hayır"]) == "Evet"
+                add_data[fname] = st.selectbox(fname, ["Evet", "Hayır"], key=f"add_{fname}_{st.session_state['user_add_form_key']}") == "Evet"
             elif ftype == "json":
-                add_data[fname] = st.text_area(fname + " (JSON)", value="{}")
+                add_data[fname] = st.text_area(fname + " (JSON)", value="{}", key=f"add_{fname}_{st.session_state['user_add_form_key']}")
             elif ftype == "number":
                 if not (table_name == "Users" and fname == "role_id"):
-                    add_data[fname] = st.number_input(fname, step=1, format="%d")
+                    add_data[fname] = st.number_input(fname, step=1, format="%d", key=f"add_{fname}_{st.session_state['user_add_form_key']}")
             else:
                 max_chars = 100 if fname in ["name", "surname"] else None
-                add_data[fname] = st.text_input(fname, max_chars=max_chars)
+                add_data[fname] = st.text_input(fname, max_chars=max_chars, key=f"add_{fname}_{st.session_state['user_add_form_key']}")
                 if max_chars and add_data[fname] and len(add_data[fname]) > max_chars:
-                    st.markdown(f'<div style="color:red; font-size:12px;">En fazla {max_chars} karakter girebilirsiniz.</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style=\"color:red; font-size:12px;\">En fazla {max_chars} karakter girebilirsiniz.</div>', unsafe_allow_html=True)
                 if fname == "e_mail" and add_data[fname] and not is_valid_email(add_data[fname]):
-                    st.markdown('<div style="color:red; font-size:12px;">Lütfen geçerli bir e-posta adresi girin (ör: kisi@site.com)</div>', unsafe_allow_html=True)
-        if st.button("Ekle"):
+                    st.markdown('<div style=\"color:red; font-size:12px;\">Lütfen geçerli bir e-posta adresi girin (ör: kisi@site.com)</div>', unsafe_allow_html=True)
+        if st.button("Ekle", key=f"add_user_button_{st.session_state['user_add_form_key']}"):
             for field in fields:
                 if field["name"] in ["create_date", "change_date"]:
                     continue
@@ -632,7 +637,9 @@ with st.expander("Yeni Kayıt Ekle"):
                     except Exception:
                         add_data[field["name"]] = {}
             if table_name == "Users":
-                add_data['role_id'] = role_name_to_id.get(add_data.pop('role_name'), None)
+                selected_role_name = add_data.pop('role_name')
+                roles = get_roles()
+                add_data['role_id'] = next((r['role_id'] for r in roles if r['role_name'] == selected_role_name), None)
                 email = add_data.get("e_mail", "")
                 if not is_valid_email(email):
                     st.error("Lütfen geçerli bir e-posta adresi girin (ör: kisi@site.com)")
@@ -641,6 +648,7 @@ with st.expander("Yeni Kayıt Ekle"):
                         resp = requests.post(f"{backend_url}/{endpoint}", json=add_data)
                         if resp.status_code == 200:
                             st.session_state["success_message"] = "Kişi eklendi!"
+                            st.session_state['user_add_form_key'] += 1
                             st.rerun()
                         else:
                             try:
@@ -653,7 +661,10 @@ with st.expander("Yeni Kayıt Ekle"):
                                     'unique constraint' in error_msg.lower() or
                                     'not unique' in error_msg.lower()
                                 ):
-                                    st.error('Bu kayıt zaten mevcut.')
+                                    if 'e_mail' in error_msg.lower() or 'email' in error_msg.lower() or 'id' in error_msg.lower() or 'name' in error_msg.lower():
+                                        st.error('Bu bilgilerle zaten bir kullanıcı mevcut. Lütfen farklı bilgilerle tekrar deneyin.')
+                                    else:
+                                        st.error('Bu kayıt zaten mevcut.')
                                 else:
                                     st.error(error_msg)
                             except Exception:
@@ -852,7 +863,15 @@ with st.expander("Kayıt Sil"):
                         st.markdown('<span style="color:green; font-size:16px;">Kayıt silindi.</span>', unsafe_allow_html=True)
                         st.rerun()
                     else:
-                        st.error("Kayıt silinemedi: " + resp.text)
+                        # Hata mesajını kullanıcı dostu göster
+                        error_text = resp.text
+                        if (
+                            'foreign key constraint' in error_text.lower() or
+                            'is still referenced' in error_text.lower()
+                        ):
+                            st.error('Bu rolü silmeden önce, bu role bağlı tüm kullanıcıları silmelisiniz.')
+                        else:
+                            st.error("Kayıt silinemedi: " + error_text)
                 except Exception as e:
                     st.error(f"Kayıt silinemedi: {e}")
 
@@ -922,10 +941,10 @@ with st.expander("Kayıt Güncelle"):
 
     elif table_name == "Users":
         users = get_users()
+        roles = get_roles()
         if users:
-            for user in users:
-                user['role_name'] = next((r['role_name'] for r in roles if r['role_id'] == user['role_id']), "")
-            user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']}) [{u['role_name']}]": u['id'] for u in users}
+            # Kullanıcıların rol adını bul
+            user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']}) [{next((r['role_name'] for r in roles if r['role_id'] == u['role_id']), '')}]": u['id'] for u in users}
             selected = st.selectbox("Güncellenecek Kişi", list(user_options.keys()), key="update_user_select")
             update_id = user_options[selected]
             user_row = next((u for u in users if u['id'] == update_id), None)
@@ -935,7 +954,11 @@ with st.expander("Kayıt Güncelle"):
             user_row = None
         update_data = {}
         if user_row:
-            update_data['role_name'] = st.selectbox("Rol", role_names, index=role_names.index(user_row.get('role_name', role_names[0])) if user_row.get('role_name', None) in role_names else 0, key="update_role_name")
+            # Güncelleme formunda sadece rol adı gösterilsin, id gösterilmesin
+            roles = get_roles()
+            role_names = [r['role_name'] for r in roles]
+            current_role_name = next((r['role_name'] for r in roles if r['role_id'] == user_row['role_id']), '')
+            update_data['role_name'] = st.selectbox("Rol", role_names, index=role_names.index(current_role_name) if current_role_name in role_names else 0, key="update_role_name")
             update_data['name'] = st.text_input("name", value=user_row.get('name', ''), max_chars=100, key="update_name")
             update_data['surname'] = st.text_input("surname", value=user_row.get('surname', ''), max_chars=100, key="update_surname")
             update_data['password'] = st.text_input("password", value=user_row.get('password', ''), key="update_password")
@@ -944,25 +967,26 @@ with st.expander("Kayıt Güncelle"):
                 st.markdown('<div style="color:red; font-size:12px;">Lütfen geçerli bir e-posta adresi girin (ör: kisi@site.com)</div>', unsafe_allow_html=True)
             update_data['institution_working'] = st.text_input("institution_working", value=user_row.get('institution_working', ''), key="update_institution_working")
         if st.button("Güncelle", key="update_button_users"):
-            if user_row:
-                update_data['role_id'] = role_name_to_id.get(update_data.pop('role_name'), None)
-                email = update_data.get("e_mail", "")
-                if not is_valid_email(email):
-                    st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
-                else:
-                    try:
-                        resp = requests.put(f"{backend_url}/{endpoint}/{update_id}", json=update_data)
-                        if resp.status_code == 200:
-                            st.session_state["success_message"] = "Kayıt güncellendi!"
-                            st.session_state["show_table"] = True
-                            st.rerun()
-                        else:
-                            error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
-                            st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
-                            if error_msg and not (isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype'))):
-                                st.error(error_msg)
-                    except Exception as e:
+            email = update_data.get("e_mail", "")
+            if not is_valid_email(email):
+                st.error("Kayıt güncellenemedi. Lütfen geçerli bir e-posta adresi girin.")
+            else:
+                try:
+                    selected_role_name = update_data.pop('role_name')
+                    roles = get_roles()
+                    update_data['role_id'] = next((r['role_id'] for r in roles if r['role_name'] == selected_role_name), user_row['role_id'])
+                    resp = requests.put(f"{backend_url}/users/{update_id}", json=update_data)
+                    if resp.status_code == 200:
+                        st.session_state["success_message"] = "Kayıt güncellendi!"
+                        st.session_state["show_table"] = True
+                        st.rerun()
+                    else:
+                        error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
                         st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+                        if error_msg and not (isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype'))):
+                            st.error(error_msg)
+                except Exception as e:
+                    st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
         else:
             pass
 
