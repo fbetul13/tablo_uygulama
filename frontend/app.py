@@ -943,13 +943,13 @@ with st.expander("Kayıt Güncelle"):
             if update_data['e_mail'] and not is_valid_email(update_data['e_mail']):
                 st.markdown('<div style="color:red; font-size:12px;">Lütfen geçerli bir e-posta adresi girin (ör: kisi@site.com)</div>', unsafe_allow_html=True)
             update_data['institution_working'] = st.text_input("institution_working", value=user_row.get('institution_working', ''), key="update_institution_working")
-        if st.button("Güncelle", key="update_button_users"):
-            if user_row:
-                update_data['role_id'] = role_name_to_id.get(update_data.pop('role_name'), None)
+
+            if st.button("Güncelle", key="update_button_users"):
                 email = update_data.get("e_mail", "")
                 if not is_valid_email(email):
-                    st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+                    st.error("Kayıt güncellenemedi. Lütfen geçerli bir e-posta adresi girin.")
                 else:
+                    update_data['role_id'] = role_name_to_id.get(update_data.pop('role_name'), None)
                     try:
                         resp = requests.put(f"{backend_url}/{endpoint}/{update_id}", json=update_data)
                         if resp.status_code == 200:
@@ -962,7 +962,7 @@ with st.expander("Kayıt Güncelle"):
                             if error_msg and not (isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype'))):
                                 st.error(error_msg)
                     except Exception as e:
-                        st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+                        st.error(f"Kayıt güncellenemedi. Hata: {e}")
         else:
             pass
 
@@ -1060,9 +1060,20 @@ with st.expander("Kayıt Güncelle"):
             update_data['python_code'] = st.text_area("python_code", value=auto_prompt_row.get('python_code', ''), key="update_ap_python_code")
             update_data['mcrisactive'] = st.selectbox("mcrisactive", ["Evet", "Hayır"], index=0 if auto_prompt_row.get('mcrisactive', False) else 1, key="update_ap_mcrisactive") == "Evet"
             update_data['receiver_emails'] = st.text_area("receiver_emails", value=auto_prompt_row.get('receiver_emails', ''), key="update_ap_receiver_emails")
+            # Email format kontrolü ve uyarı
+            email_warning = False
+            if update_data['receiver_emails']:
+                emails = [e.strip() for e in update_data['receiver_emails'].split(",") if e.strip()]
+                for e in emails:
+                    if not is_valid_email(e):
+                        st.markdown('<div style="color:red; font-size:12px;">Lütfen geçerli e-posta adres(ler)i girin. (Virgülle ayırabilirsiniz)</div>', unsafe_allow_html=True)
+                        email_warning = True
+                        break
         if st.button("Güncelle", key="update_button_auto_prompt"):
             if auto_prompt_row and not valid_trigg:
                 st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+            elif auto_prompt_row and email_warning:
+                st.error("Kayıt güncellenemedi. Lütfen geçerli e-posta adres(ler)i girin.")
             elif auto_prompt_row:
                 update_data['trigger_time'] = json.loads(trigger_time_input)
                 try:
