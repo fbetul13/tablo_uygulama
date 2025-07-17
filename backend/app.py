@@ -437,7 +437,7 @@ def get_auto_prompt():
         cur.execute('''
             SELECT ap.*, a.title as assistant_title
             FROM auto_prompt ap
-            LEFT JOIN assistants a ON ap."asistan-id" = a."asistan-id"
+            LEFT JOIN assistants a ON ap.assistant_id = a.asistan_id
         ''')
         records = cur.fetchall()
         cur.close()
@@ -468,11 +468,11 @@ def add_auto_prompt():
         cur.close()
         conn.close()
         return jsonify({'error': 'assistant_title bulunamadı'}), 400
-    asistan_id = row[0]
+    assistant_id = row[0]
     cur.execute(
-        'INSERT INTO auto_prompt (asistan_id, question, trigger_time, option_code, mcrisactive, receiver_emails) VALUES (%s, %s, %s, %s, %s, %s)',
+        'INSERT INTO auto_prompt (assistant_id, question, trigger_time, option_code, mcrisactive, receiver_emails) VALUES (%s, %s, %s, %s, %s, %s)',
         (
-            asistan_id,
+            assistant_id,
             data.get('question'),
             trigger_time,
             data.get('option_code'),
