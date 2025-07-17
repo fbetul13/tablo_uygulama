@@ -52,19 +52,28 @@ def add_role():
     permissions = data.get('permissions')
     if isinstance(permissions, dict):
         permissions = json.dumps(permissions)
-    cur.execute(
-        'INSERT INTO "Roles" (role_id, role_name, permissions, admin_or_not) VALUES (%s, %s, %s, %s)',
-        (
-            data.get('role_id'),
-            data.get('role_name'),
-            permissions,
-            data.get('admin_or_not')
+    try:
+        cur.execute(
+            'INSERT INTO "Roles" (role_id, role_name, permissions, admin_or_not) VALUES (%s, %s, %s, %s)',
+            (
+                data.get('role_id'),
+                data.get('role_name'),
+                permissions,
+                data.get('admin_or_not')
+            )
         )
-    )
-    conn.commit()
-    cur.close()
-    conn.close()
-    return jsonify({'status': 'success'})
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        conn.rollback()
+        cur.close()
+        conn.close()
+        import psycopg2
+        if isinstance(e, psycopg2.errors.UniqueViolation):
+            return jsonify({'error': 'Bu role_id zaten mevcut'}), 400
+        return jsonify({'error': str(e)}), 400
 
 @app.route('/roles/<int:role_id>', methods=['DELETE'])
 def delete_role(role_id):

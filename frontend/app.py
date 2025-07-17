@@ -274,6 +274,9 @@ with st.expander("Yeni Kayıt Ekle"):
         # permissions başlığı ve kutucuk
         form.markdown("**permissions (JSON):**")
         permissions = form.text_area("permissions", value="{}", key="add_permissions_json")
+        valid_permissions, permissions_err = validate_json_input(permissions)
+        if not valid_permissions:
+            form.markdown('<div style="color:red; font-size:12px;">Hatalı JSON formatı. Lütfen geçerli bir JSON girin.<br>Örnek: {\"all\": \"read,write\"}</div>', unsafe_allow_html=True)
         admin_or_not = form.selectbox("admin_or_not", ["Evet", "Hayır"]) == "Evet"
         submitted = form.form_submit_button("Ekle")
         add_data = {
@@ -290,13 +293,15 @@ with st.expander("Yeni Kayıt Ekle"):
                 for mf, reason in missing_fields:
                     form.markdown(f'<div style="color:red; font-size:12px;">{reason}</div>', unsafe_allow_html=True)
                 form.error("Eksik alan(lar): " + ", ".join([mf for mf, _ in missing_fields]))
+            elif not valid_permissions:
+                form.error("Lütfen permissions alanına geçerli bir JSON girin.")
             else:
                 try:
                     add_data["permissions"] = json.loads(permissions) if permissions else {}
                     resp = requests.post(f"{backend_url}/roles", json=add_data)
                     if resp.status_code == 200:
                         st.session_state["success_message"] = "Kayıt eklendi!"
-                        st.session_state["role_form_key"] += 1  # Formu sıfırla
+                        st.session_state["role_form_key"] += 1
                         st.rerun()
                     else:
                         try:
@@ -311,8 +316,8 @@ with st.expander("Yeni Kayıt Ekle"):
                             ):
                                 if 'e_mail' in error_msg.lower() or 'email' in error_msg.lower():
                                     form.error('Bu e-posta adresiyle zaten bir kullanıcı var.')
-                                elif 'id' in error_msg.lower():
-                                    form.error('Bu ID ile zaten bir kayıt mevcut.')
+                                elif 'id' in error_msg.lower() or 'role_id' in error_msg.lower():
+                                    form.error('Bu role_id zaten mevcut, lütfen farklı bir ID girin.')
                                 elif 'name' in error_msg.lower():
                                     form.error('Bu isimle bir kayıt zaten eklenmiş.')
                                 else:
@@ -827,23 +832,20 @@ with st.expander("Kayıt Sil"):
         if roles:
             role_names = [r['role_name'] for r in roles]
             selected_role_name = st.selectbox("Silinecek Rol (role_name)", role_names, key="delete_role_name_select")
-            selected_role_by_name = next((r for r in roles if r['role_name'] == selected_role_name), None)
+            # Aynı role_name'e sahip tüm kayıtları bul
+            same_name_roles = [r for r in roles if r['role_name'] == selected_role_name]
+            if len(same_name_roles) > 1:
+                st.warning("Birden fazla aynı isimli rol var, lütfen ID seçin.")
+            # ID seçimi/girişi zorunlu
+            selected_role_id = st.selectbox("Silinecek ID (role_id)", [r['role_id'] for r in same_name_roles], key="delete_role_id_select") if len(same_name_roles) > 1 else same_name_roles[0]['role_id']
+            delete_id = selected_role_id if isinstance(selected_role_id, int) else None
         else:
             st.success("Silinecek rol yok.")
-            selected_role_by_name = None
-        manual_delete_id = st.text_input("Silinecek ID (veya anahtar)", key="delete_role_id_manual")
-        if manual_delete_id:
-            try:
-                delete_id = int(manual_delete_id)
-            except Exception:
-                st.warning("Geçerli bir ID girin.")
-                delete_id = None
-        elif selected_role_by_name:
-            delete_id = selected_role_by_name['role_id']
-        else:
             delete_id = None
         if st.button("Sil", key="delete_button_roles"):
-            if delete_id:
+            if not delete_id:
+                st.error("Lütfen silinecek ID girin.")
+            else:
                 try:
                     resp = requests.delete(f"{backend_url}/roles/{delete_id}")
                     if resp.status_code == 200:
@@ -853,8 +855,6 @@ with st.expander("Kayıt Sil"):
                         st.error("Kayıt silinemedi: " + resp.text)
                 except Exception as e:
                     st.error(f"Kayıt silinemedi: {e}")
-            else:
-                st.error("Lütfen silinecek ID girin.")
 
 # Güncelle
 with st.expander("Kayıt Güncelle"):
@@ -943,13 +943,13 @@ with st.expander("Kayıt Güncelle"):
             if update_data['e_mail'] and not is_valid_email(update_data['e_mail']):
                 st.markdown('<div style="color:red; font-size:12px;">Lütfen geçerli bir e-posta adresi girin (ör: kisi@site.com)</div>', unsafe_allow_html=True)
             update_data['institution_working'] = st.text_input("institution_working", value=user_row.get('institution_working', ''), key="update_institution_working")
-
-            if st.button("Güncelle", key="update_button_users"):
+        if st.button("Güncelle", key="update_button_users"):
+            if user_row:
+                update_data['role_id'] = role_name_to_id.get(update_data.pop('role_name'), None)
                 email = update_data.get("e_mail", "")
                 if not is_valid_email(email):
-                    st.error("Kayıt güncellenemedi. Lütfen geçerli bir e-posta adresi girin.")
+                    st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
                 else:
-                    update_data['role_id'] = role_name_to_id.get(update_data.pop('role_name'), None)
                     try:
                         resp = requests.put(f"{backend_url}/{endpoint}/{update_id}", json=update_data)
                         if resp.status_code == 200:
@@ -962,7 +962,7 @@ with st.expander("Kayıt Güncelle"):
                             if error_msg and not (isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype'))):
                                 st.error(error_msg)
                     except Exception as e:
-                        st.error(f"Kayıt güncellenemedi. Hata: {e}")
+                        st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
         else:
             pass
 
@@ -1060,20 +1060,9 @@ with st.expander("Kayıt Güncelle"):
             update_data['python_code'] = st.text_area("python_code", value=auto_prompt_row.get('python_code', ''), key="update_ap_python_code")
             update_data['mcrisactive'] = st.selectbox("mcrisactive", ["Evet", "Hayır"], index=0 if auto_prompt_row.get('mcrisactive', False) else 1, key="update_ap_mcrisactive") == "Evet"
             update_data['receiver_emails'] = st.text_area("receiver_emails", value=auto_prompt_row.get('receiver_emails', ''), key="update_ap_receiver_emails")
-            # Email format kontrolü ve uyarı
-            email_warning = False
-            if update_data['receiver_emails']:
-                emails = [e.strip() for e in update_data['receiver_emails'].split(",") if e.strip()]
-                for e in emails:
-                    if not is_valid_email(e):
-                        st.markdown('<div style="color:red; font-size:12px;">Lütfen geçerli e-posta adres(ler)i girin. (Virgülle ayırabilirsiniz)</div>', unsafe_allow_html=True)
-                        email_warning = True
-                        break
         if st.button("Güncelle", key="update_button_auto_prompt"):
             if auto_prompt_row and not valid_trigg:
                 st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
-            elif auto_prompt_row and email_warning:
-                st.error("Kayıt güncellenemedi. Lütfen geçerli e-posta adres(ler)i girin.")
             elif auto_prompt_row:
                 update_data['trigger_time'] = json.loads(trigger_time_input)
                 try:
