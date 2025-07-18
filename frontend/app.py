@@ -414,25 +414,23 @@ with st.expander("Yeni Kayıt Ekle"):
             except Exception as e:
                 form.error(f"Kayıt eklenemedi: {e}")
     elif table_name == "Auto Prompt":
-        # Assistants tablosundan başlıkları çek
+        # Assistants tablosundan asistan_id'leri çek
         try:
             assistants = requests.get(f"{backend_url}/assistants").json()
-            assistant_titles = [a['title'] for a in assistants] if assistants else []
+            assistant_options = {f"{a['asistan_id']} - {a['title']}": a['asistan_id'] for a in assistants} if assistants else {}
         except Exception:
-            assistant_titles = []
+            assistant_options = {}
         form = st.form(key=f"auto_prompt_form_{st.session_state.get('auto_prompt_form_key', 0)}")
         question = form.text_area("question", max_chars=255)
         if len(question) > 100:
             form.markdown('<div style="color:red; font-size:12px;">En fazla 100 karakter girebilirsiniz.</div>', unsafe_allow_html=True)
-        if assistant_titles:
-            assistant_title = form.selectbox("assistant_title (Assistants tablosundan)", assistant_titles)
+        if assistant_options:
+            assistant_display = form.selectbox("assistant_id (Assistants tablosundan)", list(assistant_options.keys()))
+            assistant_id = assistant_options[assistant_display]
         else:
-            assistant_title = form.text_area("assistant_title", max_chars=100)
-            if len(assistant_title) > 100:
-                form.markdown('<div style="color:red; font-size:12px;">En fazla 100 karakter girebilirsiniz.</div>', unsafe_allow_html=True)
+            assistant_id = form.text_input("assistant_id", max_chars=100)
         form.markdown("**trigger_time:**")
         trigger_time_times = form.text_input("times", max_chars=100, key="add_trigger_time_times")
-        # trigger_time sadece 'times' içeren bir JSON olarak gönderilecek
         trigger_time = {"times": trigger_time_times}
         python_code = form.text_area("python_code", height=200, help="Buraya Python kodunuzu yazabilirsiniz.")
         mcrisactive = form.selectbox("mcrisactive", ["Evet", "Hayır"]) == "Evet"
@@ -447,13 +445,13 @@ with st.expander("Yeni Kayıt Ekle"):
                     break
         submitted = form.form_submit_button("Ekle")
         if submitted:
-            if len(question) > 100 or (not assistant_title or len(assistant_title) > 100) or email_warning:
+            if len(question) > 100 or email_warning:
                 form.error("Lütfen alanları doğru ve limitlere uygun doldurun.")
             else:
                 try:
                     add_data = {
                         "question": question,
-                        "assistant_title": assistant_title,
+                        "assistant_id": assistant_id,
                         "trigger_time": trigger_time,
                         "python_code": python_code,
                         "mcrisactive": mcrisactive,
@@ -496,9 +494,16 @@ with st.expander("Yeni Kayıt Ekle"):
         user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['id'] for u in users} if users else {}
         assistant_options = {f"{a['asistan_id']} - {a['title']}": a['asistan_id'] for a in assistants} if assistants else {}
         database_options = {f"{d['database_id']} - {d['database_name']} ({d['database_ip']}:{d['database_port']})": d['database_id'] for d in databases} if databases else {}
-        form = st.form(key=f"dpm_form_{st.session_state.get('dpm_form_key', 0)}")
+        # Ekleme formu
+        form = st.form(key=f"dpm_form_add_{st.session_state.get('dpm_form_key', 0)}")
         module_id = form.number_input("module_id", min_value=0, step=1, format="%d")
         query = form.text_area("query")
+        import re
+        query_invalid = False
+        if query:
+            if not re.match(r"^[a-zA-Z0-9 .,;:!?'\"()\[\]{}\-_\/\\\n\r]*$", query):
+                query_invalid = True
+                form.markdown('<div style="color:red; font-size:12px;">Lütfen sadece metin ve temel noktalama işaretleri girin.</div>', unsafe_allow_html=True)
         user_id = form.selectbox("user_id (Users tablosundan)", list(user_options.keys())) if user_options else form.text_input("user_id")
         asistan_id = form.selectbox("asistan_id (Assistants tablosundan)", list(assistant_options.keys())) if assistant_options else form.text_input("asistan_id")
         database_id = form.selectbox("database_id (Database Info tablosundan)", list(database_options.keys())) if database_options else form.text_input("database_id")
@@ -506,14 +511,13 @@ with st.expander("Yeni Kayıt Ekle"):
         query_name = form.text_area("query_name", max_chars=255)
         working_platform = form.text_area("working_platform", max_chars=100)
         db_schema = form.text_area("db_schema")
-        documents_id = form.text_area("documents_id")
+        documents_id = form.text_input("documents_id")
         csv_db_schema = form.text_area("csv_db_schema")
         data_prep_code = form.text_area("data_prep_code", height=200, max_chars=1000, help="Buraya Python kodunuzu yazabilirsiniz.")
-        # Karakter sayacı kaldırıldı
         submitted = form.form_submit_button("Ekle")
         if submitted:
-            if (working_platform and len(working_platform) > 100) or (query_name and len(query_name) > 100):
-                form.error("Lütfen alanları doğru ve limitlere uygun doldurun.")
+            if (working_platform and len(working_platform) > 100) or (query_name and len(query_name) > 100) or query_invalid:
+                pass  # Sadece kutu altında uyarı gösterilecek, genel hata gösterilmesin
             else:
                 try:
                     add_data = {
@@ -667,7 +671,9 @@ with st.expander("Yeni Kayıt Ekle"):
                                     'unique constraint' in error_msg.lower() or
                                     'not unique' in error_msg.lower()
                                 ):
-                                    if 'e_mail' in error_msg.lower() or 'email' in error_msg.lower() or 'id' in error_msg.lower() or 'name' in error_msg.lower():
+                                    if 'e_mail' in error_msg.lower() or 'email' in error_msg.lower():
+                                        st.error('Bu e-posta adresiyle zaten bir kullanıcı var.')
+                                    elif 'id' in error_msg.lower() or 'name' in error_msg.lower():
                                         st.error('Bu bilgilerle zaten bir kullanıcı mevcut. Lütfen farklı bilgilerle tekrar deneyin.')
                                     else:
                                         st.error('Bu kayıt zaten mevcut.')
@@ -1064,6 +1070,12 @@ with st.expander("Kayıt Güncelle"):
         except Exception as e:
             st.error(f"Veri alınırken hata oluştu: {e}")
             auto_prompts = []
+        # Assistants tablosundan asistan_id'leri çek
+        try:
+            assistants = requests.get(f"{backend_url}/assistants").json()
+            assistant_options = {f"{a['asistan_id']} - {a['title']}": a['asistan_id'] for a in assistants} if assistants else {}
+        except Exception:
+            assistant_options = {}
         if auto_prompts:
             auto_prompt_options = {f"{ap['prompt_id']} - {ap['question']}": ap['prompt_id'] for ap in auto_prompts}
             selected = st.selectbox("Güncellenecek Auto Prompt", list(auto_prompt_options.keys()), key="update_auto_prompt_select")
@@ -1076,7 +1088,20 @@ with st.expander("Kayıt Güncelle"):
         update_data = {}
         if auto_prompt_row:
             update_data['question'] = st.text_area("question", value=auto_prompt_row.get('question', ''), key="update_ap_question")
-            update_data['assistant_title'] = st.text_area("assistant_title", value=auto_prompt_row.get('assistant_title', ''), key="update_ap_assistant_title")
+            # assistant_id selectbox
+            if assistant_options:
+                # Varsayılanı mevcut assistant_id'ye ayarla
+                current_assistant_id = str(auto_prompt_row.get('assistant_id', ''))
+                assistant_display_list = list(assistant_options.keys())
+                default_index = 0
+                for i, k in enumerate(assistant_display_list):
+                    if str(assistant_options[k]) == current_assistant_id:
+                        default_index = i
+                        break
+                assistant_display = st.selectbox("assistant_id (Assistants tablosundan)", assistant_display_list, index=default_index, key="update_ap_assistant_id")
+                update_data['assistant_id'] = assistant_options[assistant_display]
+            else:
+                update_data['assistant_id'] = st.text_input("assistant_id", value=str(auto_prompt_row.get('assistant_id', '')), key="update_ap_assistant_id_text")
             trigger_time_val = pretty_json(auto_prompt_row.get('trigger_time'))
             st.markdown("**trigger_time (JSON):**")
             trigger_time_input = st.text_area("", value=trigger_time_val, key="update_ap_trigger_time_json")
@@ -1086,9 +1111,20 @@ with st.expander("Kayıt Güncelle"):
             update_data['python_code'] = st.text_area("python_code", value=auto_prompt_row.get('python_code', ''), key="update_ap_python_code")
             update_data['mcrisactive'] = st.selectbox("mcrisactive", ["Evet", "Hayır"], index=0 if auto_prompt_row.get('mcrisactive', False) else 1, key="update_ap_mcrisactive") == "Evet"
             update_data['receiver_emails'] = st.text_area("receiver_emails", value=auto_prompt_row.get('receiver_emails', ''), key="update_ap_receiver_emails")
+            email_warning = False
+            email_error_msg = ""
+            if update_data['receiver_emails']:
+                emails = [e.strip() for e in update_data['receiver_emails'].split(",") if e.strip()]
+                for e in emails:
+                    if not is_valid_email(e):
+                        email_error_msg = '<div style="color:red; font-size:12px;">Lütfen geçerli e-posta adres(ler)i girin. (Virgülle ayırabilirsiniz)</div>'
+                        email_warning = True
+                        break
+            if email_error_msg:
+                st.markdown(email_error_msg, unsafe_allow_html=True)
         if st.button("Güncelle", key="update_button_auto_prompt"):
-            if auto_prompt_row and not valid_trigg:
-                st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+            if auto_prompt_row and (not valid_trigg or email_warning):
+                st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan ve e-posta adreslerinin geçerli olduğundan emin olun.")
             elif auto_prompt_row:
                 update_data['trigger_time'] = json.loads(trigger_time_input)
                 try:
@@ -1124,60 +1160,69 @@ with st.expander("Kayıt Güncelle"):
         user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['id'] for u in users} if users else {}
         assistant_options = {f"{a['asistan_id']} - {a['title']}": a['asistan_id'] for a in assistants} if assistants else {}
         database_options = {f"{d['database_id']} - {d['database_name']} ({d['database_ip']}:{d['database_port']})": d['database_id'] for d in databases} if databases else {}
-        if dpm_modules:
-            dpm_options = {f"{dpm['module_id']}": dpm['module_id'] for dpm in dpm_modules}
-            selected = st.selectbox("Güncellenecek Data Prepare Module", list(dpm_options.keys()), key="update_dpm_select")
-            update_id = dpm_options[selected]
-            dpm_row = next((d for d in dpm_modules if d['module_id'] == update_id), None)
-        else:
-            st.success("Güncellenecek data prepare module yok.")
-            update_id = None
-            dpm_row = None
-        update_data = {}
-        if dpm_row:
-            update_data['query'] = st.text_area("query", value=dpm_row.get('query', ''), key="update_query")
-            if user_options:
-                user_display = st.selectbox("user_id (Users tablosundan)", list(user_options.keys()), index=list(user_options.values()).index(dpm_row.get('user_id', None)) if dpm_row.get('user_id', None) in user_options.values() else 0, key="update_dpm_user_id")
-                update_data['user_id'] = user_options[user_display]
+        # Güncelleme formu
+        form = st.form(key=f"dpm_form_update_{st.session_state.get('dpm_form_key', 0)}")
+        module_id = form.number_input("module_id", min_value=0, step=1, format="%d")
+        query = form.text_area("query")
+        import re
+        query_invalid = False
+        if query:
+            if not re.match(r"^[a-zA-Z0-9 .,;:!?'\"()\[\]{}\-_\/\\\n\r]*$", query):
+                query_invalid = True
+                form.markdown('<div style="color:red; font-size:12px;">Lütfen sadece metin ve temel noktalama işaretleri girin.</div>', unsafe_allow_html=True)
+        user_id = form.selectbox("user_id (Users tablosundan)", list(user_options.keys())) if user_options else form.text_input("user_id")
+        asistan_id = form.selectbox("asistan_id (Assistants tablosundan)", list(assistant_options.keys())) if assistant_options else form.text_input("asistan_id")
+        database_id = form.selectbox("database_id (Database Info tablosundan)", list(database_options.keys())) if database_options else form.text_input("database_id")
+        csv_database_id = form.text_input("csv_database_id")
+        query_name = form.text_area("query_name", max_chars=255)
+        working_platform = form.text_area("working_platform", max_chars=100)
+        db_schema = form.text_area("db_schema")
+        documents_id = form.text_input("documents_id")
+        csv_db_schema = form.text_area("csv_db_schema")
+        data_prep_code = form.text_area("data_prep_code", height=200, max_chars=1000, help="Buraya Python kodunuzu yazabilirsiniz.")
+        submitted = form.form_submit_button("Ekle")
+        if submitted:
+            if (working_platform and len(working_platform) > 100) or (query_name and len(query_name) > 100) or query_invalid:
+                pass  # Sadece kutu altında uyarı gösterilecek, genel hata gösterilmesin
             else:
-                update_data['user_id'] = st.text_input("user_id", value=str(dpm_row.get('user_id', '')), key="update_dpm_user_id_text")
-            if assistant_options:
-                assistant_display = st.selectbox("asistan_id (Assistants tablosundan)", list(assistant_options.keys()), index=list(assistant_options.values()).index(dpm_row.get('asistan_id', None)) if dpm_row.get('asistan_id', None) in assistant_options.values() else 0, key="update_dpm_asistan_id")
-                update_data['asistan_id'] = assistant_options[assistant_display]
-            else:
-                update_data['asistan_id'] = st.text_input("asistan_id", value=str(dpm_row.get('asistan_id', '')), key="update_dpm_asistan_id_text")
-            if database_options:
-                database_display = st.selectbox("database_id (Database Info tablosundan)", list(database_options.keys()), index=list(database_options.values()).index(dpm_row.get('database_id', None)) if dpm_row.get('database_id', None) in database_options.values() else 0, key="update_dpm_database_id")
-                update_data['database_id'] = database_options[database_display]
-            else:
-                update_data['database_id'] = st.text_input("database_id", value=str(dpm_row.get('database_id', '')), key="update_dpm_database_id_text")
-            update_data['csv_database_id'] = st.text_input("csv_database_id", value=str(dpm_row.get('csv_database_id', '')), key="update_csv_database_id")
-            update_data['query_name'] = st.text_area("query_name", value=dpm_row.get('query_name', ''), max_chars=255, key="update_query_name")
-            update_data['working_platform'] = st.text_area("working_platform", value=dpm_row.get('working_platform', ''), max_chars=100, key="update_working_platform")
-            update_data['db_schema'] = st.text_area("db_schema", value=dpm_row.get('db_schema', ''), key="update_db_schema")
-            update_data['documents_id'] = st.text_area("documents_id", value=str(dpm_row.get('documents_id', '')), key="update_documents_id")
-            update_data['csv_db_schema'] = st.text_area("csv_db_schema", value=dpm_row.get('csv_db_schema', ''), key="update_csv_db_schema")
-            update_data['data_prep_code'] = st.text_area("data_prep_code", value=dpm_row.get('data_prep_code', ''), height=200, max_chars=1000, key="update_data_prep_code")
-        if st.button("Güncelle", key="update_button_dpm"):
-            if dpm_row:
-                if (update_data['working_platform'] and len(update_data['working_platform']) > 100) or (update_data['query_name'] and len(update_data['query_name']) > 100):
-                    st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
-                else:
-                    try:
-                        resp = requests.put(f"{backend_url}/{endpoint}/{update_id}", json=update_data)
-                        if resp.status_code == 200:
-                            st.session_state["success_message"] = "Kayıt güncellendi!"
-                            st.session_state["show_table"] = True
-                            st.rerun()
-                        else:
+                try:
+                    add_data = {
+                        "module_id": module_id,
+                        "query": query,
+                        "user_id": user_options[user_id] if user_options else user_id,
+                        "asistan_id": assistant_options[asistan_id] if assistant_options else asistan_id,
+                        "database_id": database_options[database_id] if database_options else database_id,
+                        "csv_database_id": csv_database_id,
+                        "query_name": query_name,
+                        "working_platform": working_platform,
+                        "db_schema": db_schema,
+                        "documents_id": documents_id,
+                        "csv_db_schema": csv_db_schema,
+                        "data_prep_code": data_prep_code
+                    }
+                    resp = requests.post(f"{backend_url}/data_prepare_modules", json=add_data)
+                    if resp.status_code == 200:
+                        st.session_state["success_message"] = "Kayıt eklendi!"
+                        st.session_state["dpm_form_key"] = st.session_state.get('dpm_form_key', 0) + 1
+                        st.rerun()
+                    else:
+                        try:
                             error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
-                            st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
-                            if error_msg and not (isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype'))):
-                                st.error(error_msg)
-                    except Exception as e:
-                        st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
-        else:
-            pass
+                            if isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype')):
+                                form.error('Geçersiz giriş, lütfen alanları kontrol edin.')
+                            elif isinstance(error_msg, str) and (
+                                'already exists' in error_msg.lower() or
+                                'duplicate' in error_msg.lower() or
+                                'unique constraint' in error_msg.lower() or
+                                'not unique' in error_msg.lower()
+                            ):
+                                form.error('Bu kayıt zaten mevcut.')
+                            else:
+                                form.error(error_msg)
+                        except Exception:
+                            form.error('Geçersiz giriş, lütfen alanları kontrol edin.')
+                except Exception as e:
+                    form.error(str(e))
 
     elif table_name == "Database Info":
         try:
@@ -1357,7 +1402,9 @@ with st.expander("Kayıt Güncelle"):
                                     'unique constraint' in error_msg.lower() or
                                     'not unique' in error_msg.lower()
                                 ):
-                                    if 'e_mail' in error_msg.lower() or 'email' in error_msg.lower() or 'id' in error_msg.lower() or 'name' in error_msg.lower():
+                                    if 'e_mail' in error_msg.lower() or 'email' in error_msg.lower():
+                                        st.error('Bu e-posta adresiyle zaten bir kullanıcı var.')
+                                    elif 'id' in error_msg.lower() or 'name' in error_msg.lower():
                                         st.error('Bu bilgilerle zaten bir kullanıcı mevcut. Lütfen farklı bilgilerle tekrar deneyin.')
                                     else:
                                         st.error('Bu kayıt zaten mevcut.')

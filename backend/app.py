@@ -135,11 +135,19 @@ def add_user():
         sql_fields += ', change_date'
         sql_placeholders += ', %s'
         values.append(data.get('change_date'))
-    cur.execute(f'INSERT INTO "Users" ({sql_fields}) VALUES ({sql_placeholders})', values)
-    conn.commit()
-    cur.close()
-    conn.close()
-    return jsonify({'status': 'success'})
+    try:
+        cur.execute(f'INSERT INTO "Users" ({sql_fields}) VALUES ({sql_placeholders})', values)
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        conn.rollback()
+        cur.close()
+        conn.close()
+        if "duplicate key value violates unique constraint" in str(e) and "e_mail" in str(e):
+            return jsonify({'error': 'Bu e-posta adresiyle zaten bir kullanıcı var.'}), 400
+        return jsonify({'error': str(e)}), 400
 
 @app.route('/users/<int:user_id>', methods=['DELETE'])
 def delete_user(user_id):
@@ -269,22 +277,14 @@ def add_data_prepare_module():
     data = request.get_json(force=True) or {}
     conn = get_db_connection()
     cur = conn.cursor()
-    # JSON alanları stringe çevir
-    trigger_time = data.get('trigger_time')
-    if isinstance(trigger_time, dict):
-        trigger_time = json.dumps(trigger_time)
-    fields = ['module_name', 'description', 'user_id']
+    fields = [
+        'user_id', 'asistan_id', 'query', 'working_platform', 'query_name',
+        'database_id', 'db_schema', 'documents_id', 'csv_database_id',
+        'csv_db_schema', 'data_prep_code'
+    ]
     values = [data.get(f) for f in fields]
     sql_fields = ', '.join(fields)
     sql_placeholders = ', '.join(['%s'] * len(fields))
-    if data.get('create_date'):
-        sql_fields += ', create_date'
-        sql_placeholders += ', %s'
-        values.append(data.get('create_date'))
-    if data.get('change_date'):
-        sql_fields += ', change_date'
-        sql_placeholders += ', %s'
-        values.append(data.get('change_date'))
     cur.execute(f'INSERT INTO data_prepare_modules ({sql_fields}) VALUES ({sql_placeholders})', values)
     conn.commit()
     cur.close()
@@ -306,17 +306,15 @@ def update_data_prepare_module(module_id):
     data = request.get_json(force=True) or {}
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute(
-        'UPDATE data_prepare_modules SET module_name=%s, description=%s, user_id=%s, create_date=%s, change_date=%s WHERE module_id=%s',
-        (
-            data.get('module_name'),
-            data.get('description'),
-            data.get('user_id'),
-            data.get('create_date'),
-            data.get('change_date'),
-            module_id
-        )
-    )
+    fields = [
+        'user_id', 'asistan_id', 'query', 'working_platform', 'query_name',
+        'database_id', 'db_schema', 'documents_id', 'csv_database_id',
+        'csv_db_schema', 'data_prep_code'
+    ]
+    set_clause = ', '.join([f"{f}=%s" for f in fields])
+    values = [data.get(f) for f in fields]
+    values.append(module_id)
+    cur.execute(f'UPDATE data_prepare_modules SET {set_clause} WHERE module_id=%s', values)
     conn.commit()
     cur.close()
     conn.close()
