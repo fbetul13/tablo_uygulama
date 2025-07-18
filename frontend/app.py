@@ -558,7 +558,12 @@ with st.expander("Yeni Kayıt Ekle"):
         user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['id'] for u in users} if users else {}
         form = st.form(key=f"dbinfo_form_{st.session_state.get('dbinfo_form_key', 0)}")
         database_ip = form.text_area("database_ip", max_chars=100)
-        database_port = form.text_area("database_port")
+        database_port = form.text_area("database_port", max_chars=100, key="add_database_port")
+        port_invalid = database_port and not database_port.isdigit()
+        port_style = "border: 2px solid red;" if port_invalid else ""
+        form.markdown(f'<style>textarea[key="add_database_port"] {{{port_style}}}</style>', unsafe_allow_html=True)
+        if port_invalid:
+            form.markdown('<div style="color:red; font-size:12px;">Lütfen sadece rakam girin (örn: 1234)</div>', unsafe_allow_html=True)
         database_user = form.text_area("database_user", max_chars=100)
         database_password = form.text_area("database_password", max_chars=100)
         database_type = form.text_area("database_type", max_chars=50)
@@ -599,6 +604,242 @@ with st.expander("Yeni Kayıt Ekle"):
                         form.error('Geçersiz giriş, lütfen alanları kontrol edin.')
             except Exception as e:
                 form.error(str(e))
+
+        # --- Kayıt GÜNCELLEME ---
+        dbinfo_row = None  # Her durumda başta tanımla
+        try:
+            response = requests.get(f"{backend_url}/database_info")
+            response.raise_for_status()
+            dbinfo_entries = response.json()
+        except requests.exceptions.JSONDecodeError:
+            st.error("Backend'den geçersiz veri geldi (JSONDecodeError).")
+            dbinfo_entries = []
+        except Exception as e:
+            st.error(f"Veri alınırken hata oluştu: {e}")
+            dbinfo_entries = []
+        users = get_users()
+        user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['id'] for u in users} if users else {}
+        if dbinfo_entries:
+            dbinfo_options = {f"{dbinfo['database_id']} - {dbinfo['database_name']}": dbinfo['database_id'] for dbinfo in dbinfo_entries}
+            selected = st.selectbox("Güncellenecek Database Info", list(dbinfo_options.keys()), key="update_dbinfo_select_2")
+            update_id = dbinfo_options[selected]
+            dbinfo_row = next((d for d in dbinfo_entries if d['database_id'] == update_id), None)
+        else:
+            st.success("Güncellenecek database info yok.")
+            update_id = None
+            dbinfo_row = None
+        update_data = {}
+        if dbinfo_row:
+            update_data['database_ip'] = st.text_area("database_ip", value=dbinfo_row.get('database_ip', ''), max_chars=100, key="update_database_ip_1")
+            update_data['database_port'] = st.text_area("database_port", value=dbinfo_row.get('database_port', ''), max_chars=100, key="update_database_port_1")
+            port_invalid = update_data['database_port'] and not str(update_data['database_port']).isdigit()
+            port_style = "border: 2px solid red;" if port_invalid else ""
+            st.markdown(f'<style>textarea[key="update_database_port_1"] {{{port_style}}}</style>', unsafe_allow_html=True)
+            if port_invalid:
+                st.markdown('<div style="color:red; font-size:12px;">Lütfen sadece rakam girin (örn: 1234)</div>', unsafe_allow_html=True)
+            update_data['database_user'] = st.text_area("database_user", value=dbinfo_row.get('database_user', ''), max_chars=100, key="update_database_user_1")
+            update_data['database_password'] = st.text_area("database_password", value=dbinfo_row.get('database_password', ''), max_chars=100, key="update_database_password")
+            update_data['database_type'] = st.text_area("database_type", value=dbinfo_row.get('database_type', ''), max_chars=50, key="update_database_type")
+            update_data['database_name'] = st.text_area("database_name", value=dbinfo_row.get('database_name', ''), max_chars=100, key="update_database_name")
+            if user_options:
+                user_display = st.selectbox("user_id (Users tablosundan)", list(user_options.keys()), index=list(user_options.values()).index(dbinfo_row.get('user_id', None)) if dbinfo_row.get('user_id', None) in user_options.values() else 0, key="update_dbinfo_user_id")
+                update_data['user_id'] = user_options[user_display]
+            else:
+                update_data['user_id'] = st.text_input("user_id", value=str(dbinfo_row.get('user_id', '')), key="update_dbinfo_user_id_text")
+        if st.button("Güncelle", key="update_button_dbinfo"):
+            if dbinfo_row:
+                try:
+                    resp = requests.put(f"{backend_url}/{endpoint}/{update_id}", json=update_data)
+                    if resp.status_code == 200:
+                        st.session_state["success_message"] = "Kayıt güncellendi!"
+                        st.session_state["show_table"] = True
+                        st.rerun()
+                    else:
+                        error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
+                        st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+                        if error_msg and not (isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype'))):
+                            st.error(error_msg)
+                except Exception as e:
+                    st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+        else:
+            pass
+
+    # Dosyanın sonundaki tekrar için de aynı şekilde benzersiz key kullan:
+    elif table_name == "Database Info":
+        try:
+            response = requests.get(f"{backend_url}/database_info")
+            response.raise_for_status()
+            dbinfo_entries = response.json()
+        except requests.exceptions.JSONDecodeError:
+            st.error("Backend'den geçersiz veri geldi (JSONDecodeError).")
+            dbinfo_entries = []
+        except Exception as e:
+            st.error(f"Veri alınırken hata oluştu: {e}")
+            dbinfo_entries = []
+        users = get_users()
+        user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['id'] for u in users} if users else {}
+        dbinfo_row = None  # <-- Burada başlat
+        if dbinfo_entries:
+            dbinfo_options = {f"{dbinfo['database_id']} - {dbinfo['database_name']}": dbinfo['database_id'] for dbinfo in dbinfo_entries}
+            selected = st.selectbox("Güncellenecek Database Info", list(dbinfo_options.keys()), key="update_dbinfo_select_2")
+            update_id = dbinfo_options[selected]
+            dbinfo_row = next((d for d in dbinfo_entries if d['database_id'] == update_id), None)
+        else:
+            st.success("Güncellenecek database info yok.")
+            update_id = None
+            dbinfo_row = None
+        update_data = {}
+        if dbinfo_row:
+            update_data['database_ip'] = st.text_area("database_ip", value=dbinfo_row.get('database_ip', ''), max_chars=100, key="update_database_ip_2")
+            update_data['database_port'] = st.text_area("database_port", value=dbinfo_row.get('database_port', ''), max_chars=100, key="update_database_port_2")
+            port_invalid = update_data['database_port'] and not str(update_data['database_port']).isdigit()
+            port_style = "border: 2px solid red;" if port_invalid else ""
+            st.markdown(f'<style>textarea[key="update_database_port_2"] {{{port_style}}}</style>', unsafe_allow_html=True)
+            if port_invalid:
+                st.markdown('<div style="color:red; font-size:12px;">Lütfen sadece rakam girin (örn: 1234)</div>', unsafe_allow_html=True)
+            update_data['database_user'] = st.text_area("database_user", value=dbinfo_row.get('database_user', ''), max_chars=100, key="update_database_user_2")
+            update_data['database_password'] = st.text_area("database_password", value=dbinfo_row.get('database_password', ''), max_chars=100, key="update_database_password")
+            update_data['database_type'] = st.text_area("database_type", value=dbinfo_row.get('database_type', ''), max_chars=50, key="update_database_type")
+            update_data['database_name'] = st.text_area("database_name", value=dbinfo_row.get('database_name', ''), max_chars=100, key="update_database_name")
+            if user_options:
+                user_display = st.selectbox("user_id (Users tablosundan)", list(user_options.keys()), index=list(user_options.values()).index(dbinfo_row.get('user_id', None)) if dbinfo_row.get('user_id', None) in user_options.values() else 0, key="update_dbinfo_user_id")
+                update_data['user_id'] = user_options[user_display]
+            else:
+                update_data['user_id'] = st.text_input("user_id", value=str(dbinfo_row.get('user_id', '')), key="update_dbinfo_user_id_text")
+        if st.button("Güncelle", key="update_button_dbinfo"):
+            if dbinfo_row:
+                try:
+                    resp = requests.put(f"{backend_url}/{endpoint}/{update_id}", json=update_data)
+                    if resp.status_code == 200:
+                        st.session_state["success_message"] = "Kayıt güncellendi!"
+                        st.session_state["show_table"] = True
+                        st.rerun()
+                    else:
+                        error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
+                        st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+                        if error_msg and not (isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype'))):
+                            st.error(error_msg)
+                except Exception as e:
+                    st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+        else:
+            pass
+
+    elif table_name == "Database Info":
+        try:
+            response = requests.get(f"{backend_url}/database_info")
+            response.raise_for_status()
+            dbinfo_entries = response.json()
+        except requests.exceptions.JSONDecodeError:
+            st.error("Backend'den geçersiz veri geldi (JSONDecodeError).")
+            dbinfo_entries = []
+        except Exception as e:
+            st.error(f"Veri alınırken hata oluştu: {e}")
+            dbinfo_entries = []
+        users = get_users()
+        user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['id'] for u in users} if users else {}
+        if dbinfo_entries:
+            dbinfo_options = {f"{dbinfo['database_id']} - {dbinfo['database_name']}": dbinfo['database_id'] for dbinfo in dbinfo_entries}
+            selected = st.selectbox("Güncellenecek Database Info", list(dbinfo_options.keys()), key="update_dbinfo_select_3")
+            update_id = dbinfo_options[selected]
+            dbinfo_row = next((d for d in dbinfo_entries if d['database_id'] == update_id), None)
+        else:
+            st.success("Güncellenecek database info yok.")
+            update_id = None
+            dbinfo_row = None
+        update_data = {}
+        if dbinfo_row:
+            update_data['database_ip'] = st.text_area("database_ip", value=dbinfo_row.get('database_ip', ''), max_chars=100, key="update_database_ip_3")
+            update_data['database_port'] = st.text_area("database_port", value=dbinfo_row.get('database_port', ''), max_chars=100, key="update_database_port_3")
+            port_invalid = update_data['database_port'] and not str(update_data['database_port']).isdigit()
+            port_style = "border: 2px solid red;" if port_invalid else ""
+            st.markdown(f'<style>textarea[key="update_database_port_3"] {{{port_style}}}</style>', unsafe_allow_html=True)
+            if port_invalid:
+                st.markdown('<div style="color:red; font-size:12px;">Lütfen sadece rakam girin (örn: 1234)</div>', unsafe_allow_html=True)
+            update_data['database_user'] = st.text_area("database_user", value=dbinfo_row.get('database_user', ''), max_chars=100, key="update_database_user_3")
+            update_data['database_password'] = st.text_area("database_password", value=dbinfo_row.get('database_password', ''), max_chars=100, key="update_database_password")
+            update_data['database_type'] = st.text_area("database_type", value=dbinfo_row.get('database_type', ''), max_chars=50, key="update_database_type")
+            update_data['database_name'] = st.text_area("database_name", value=dbinfo_row.get('database_name', ''), max_chars=100, key="update_database_name")
+            if user_options:
+                user_display = st.selectbox("user_id (Users tablosundan)", list(user_options.keys()), index=list(user_options.values()).index(dbinfo_row.get('user_id', None)) if dbinfo_row.get('user_id', None) in user_options.values() else 0, key="update_dbinfo_user_id")
+                update_data['user_id'] = user_options[user_display]
+            else:
+                update_data['user_id'] = st.text_input("user_id", value=str(dbinfo_row.get('user_id', '')), key="update_dbinfo_user_id_text")
+        if st.button("Güncelle", key="update_button_dbinfo"):
+            if dbinfo_row:
+                try:
+                    resp = requests.put(f"{backend_url}/{endpoint}/{update_id}", json=update_data)
+                    if resp.status_code == 200:
+                        st.session_state["success_message"] = "Kayıt güncellendi!"
+                        st.session_state["show_table"] = True
+                        st.rerun()
+                    else:
+                        error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
+                        st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+                        if error_msg and not (isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype'))):
+                            st.error(error_msg)
+                except Exception as e:
+                    st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+        else:
+            pass
+
+    elif table_name == "Database Info":
+        try:
+            response = requests.get(f"{backend_url}/database_info")
+            response.raise_for_status()
+            dbinfo_entries = response.json()
+        except requests.exceptions.JSONDecodeError:
+            st.error("Backend'den geçersiz veri geldi (JSONDecodeError).")
+            dbinfo_entries = []
+        except Exception as e:
+            st.error(f"Veri alınırken hata oluştu: {e}")
+            dbinfo_entries = []
+        users = get_users()
+        user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['id'] for u in users} if users else {}
+        if dbinfo_entries:
+            dbinfo_options = {f"{dbinfo['database_id']} - {dbinfo['database_name']}": dbinfo['database_id'] for dbinfo in dbinfo_entries}
+            selected = st.selectbox("Güncellenecek Database Info", list(dbinfo_options.keys()), key="update_dbinfo_select_4")
+            update_id = dbinfo_options[selected]
+            dbinfo_row = next((d for d in dbinfo_entries if d['database_id'] == update_id), None)
+        else:
+            st.success("Güncellenecek database info yok.")
+            update_id = None
+            dbinfo_row = None
+        update_data = {}
+        if dbinfo_row:
+            update_data['database_ip'] = st.text_area("database_ip", value=dbinfo_row.get('database_ip', ''), max_chars=100, key="update_database_ip_4")
+            update_data['database_port'] = st.text_area("database_port", value=dbinfo_row.get('database_port', ''), max_chars=100, key="update_database_port_4")
+            port_invalid = update_data['database_port'] and not str(update_data['database_port']).isdigit()
+            port_style = "border: 2px solid red;" if port_invalid else ""
+            st.markdown(f'<style>textarea[key="update_database_port_4"] {{{port_style}}}</style>', unsafe_allow_html=True)
+            if port_invalid:
+                st.markdown('<div style="color:red; font-size:12px;">Lütfen sadece rakam girin (örn: 1234)</div>', unsafe_allow_html=True)
+            update_data['database_user'] = st.text_area("database_user", value=dbinfo_row.get('database_user', ''), max_chars=100, key="update_database_user_4")
+            update_data['database_password'] = st.text_area("database_password", value=dbinfo_row.get('database_password', ''), max_chars=100, key="update_database_password")
+            update_data['database_type'] = st.text_area("database_type", value=dbinfo_row.get('database_type', ''), max_chars=50, key="update_database_type")
+            update_data['database_name'] = st.text_area("database_name", value=dbinfo_row.get('database_name', ''), max_chars=100, key="update_database_name")
+            if user_options:
+                user_display = st.selectbox("user_id (Users tablosundan)", list(user_options.keys()), index=list(user_options.values()).index(dbinfo_row.get('user_id', None)) if dbinfo_row.get('user_id', None) in user_options.values() else 0, key="update_dbinfo_user_id")
+                update_data['user_id'] = user_options[user_display]
+            else:
+                update_data['user_id'] = st.text_input("user_id", value=str(dbinfo_row.get('user_id', '')), key="update_dbinfo_user_id_text")
+        if st.button("Güncelle", key="update_button_dbinfo"):
+            if dbinfo_row:
+                try:
+                    resp = requests.put(f"{backend_url}/{endpoint}/{update_id}", json=update_data)
+                    if resp.status_code == 200:
+                        st.session_state["success_message"] = "Kayıt güncellendi!"
+                        st.session_state["show_table"] = True
+                        st.rerun()
+                    else:
+                        error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
+                        st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+                        if error_msg and not (isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype'))):
+                            st.error(error_msg)
+                except Exception as e:
+                    st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+        else:
+            pass
+
     else:
         # Kullanıcı ekleme formunu sıfırlamak için form key'i kullanalım
         if 'user_add_form_key' not in st.session_state:
@@ -624,9 +865,9 @@ with st.expander("Yeni Kayıt Ekle"):
                 max_chars = 100 if fname in ["name", "surname"] else None
                 add_data[fname] = st.text_input(fname, max_chars=max_chars, key=f"add_{fname}_{st.session_state['user_add_form_key']}")
                 if max_chars and add_data[fname] and len(add_data[fname]) > max_chars:
-                    st.markdown(f'<div style=\"color:red; font-size:12px;\">En fazla {max_chars} karakter girebilirsiniz.</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="color:red; font-size:12px;">En fazla {max_chars} karakter girebilirsiniz.</div>', unsafe_allow_html=True)
                 if fname == "e_mail" and add_data[fname] and not is_valid_email(add_data[fname]):
-                    st.markdown('<div style=\"color:red; font-size:12px;\">Lütfen geçerli bir e-posta adresi girin (ör: kisi@site.com)</div>', unsafe_allow_html=True)
+                    st.markdown('<div style="color:red; font-size:12px;">Lütfen geçerli bir e-posta adresi girin (ör: kisi@site.com)</div>', unsafe_allow_html=True)
         if st.button("Ekle", key=f"add_user_button_{st.session_state['user_add_form_key']}"):
             for field in fields:
                 if field["name"] in ["create_date", "change_date"]:
@@ -969,7 +1210,7 @@ with st.expander("Kayıt Güncelle"):
         if st.button("Güncelle", key="update_button_users"):
             email = update_data.get("e_mail", "")
             if not is_valid_email(email):
-                st.error("Kayıt güncellenemedi. Lütfen geçerli bir e-posta adresi girin.")
+                st.error("Lütfen geçerli bir e-posta adresi girin (ör: kisi@site.com)")
             else:
                 try:
                     selected_role_name = update_data.pop('role_name')
@@ -997,10 +1238,6 @@ with st.expander("Kayıt Güncelle"):
             selected = st.selectbox("Güncellenecek Rol", list(role_options.keys()), key="update_role_select")
             update_id = role_options[selected]
             role_row = next((r for r in roles if r['role_id'] == update_id), None)
-            # role_name güncelleme için ayrı selectbox (benzersiz key)
-            role_names = [r['role_name'] for r in roles]
-            update_role_name = st.selectbox("Güncellenecek Rol (role_name)", role_names, key="update_role_name_select")
-            # ID seçildiğinde hata mesajını temizle
             if "roles_update_error" in st.session_state:
                 st.session_state.pop("roles_update_error")
         else:
@@ -1008,7 +1245,7 @@ with st.expander("Kayıt Güncelle"):
             role_row = None
         update_data = {}
         if role_row:
-            update_data['role_name'] = update_role_name
+            update_data['role_name'] = role_row['role_name']
             # role_id'yi de ekle
             update_data['role_id'] = update_id
             # permissions (JSON) alanı
@@ -1192,7 +1429,7 @@ with st.expander("Kayıt Güncelle"):
         user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['id'] for u in users} if users else {}
         if dbinfo_entries:
             dbinfo_options = {f"{dbinfo['database_id']} - {dbinfo['database_name']}": dbinfo['database_id'] for dbinfo in dbinfo_entries}
-            selected = st.selectbox("Güncellenecek Database Info", list(dbinfo_options.keys()), key="update_dbinfo_select")
+            selected = st.selectbox("Güncellenecek Database Info", list(dbinfo_options.keys()), key="update_dbinfo_select_5")
             update_id = dbinfo_options[selected]
             dbinfo_row = next((d for d in dbinfo_entries if d['database_id'] == update_id), None)
         else:
@@ -1201,9 +1438,14 @@ with st.expander("Kayıt Güncelle"):
             dbinfo_row = None
         update_data = {}
         if dbinfo_row:
-            update_data['database_ip'] = st.text_area("database_ip", value=dbinfo_row.get('database_ip', ''), max_chars=100, key="update_database_ip")
-            update_data['database_port'] = st.text_area("database_port", value=dbinfo_row.get('database_port', ''), key="update_database_port")
-            update_data['database_user'] = st.text_area("database_user", value=dbinfo_row.get('database_user', ''), max_chars=100, key="update_database_user")
+            update_data['database_ip'] = st.text_area("database_ip", value=dbinfo_row.get('database_ip', ''), max_chars=100, key="update_database_ip_5")
+            update_data['database_port'] = st.text_area("database_port", value=dbinfo_row.get('database_port', ''), max_chars=100, key="update_database_port_5")
+            port_invalid = update_data['database_port'] and not str(update_data['database_port']).isdigit()
+            port_style = "border: 2px solid red;" if port_invalid else ""
+            st.markdown(f'<style>textarea[key="update_database_port_5"] {{{port_style}}}</style>', unsafe_allow_html=True)
+            if port_invalid:
+                st.markdown('<div style="color:red; font-size:12px;">Lütfen sadece rakam girin (örn: 1234)</div>', unsafe_allow_html=True)
+            update_data['database_user'] = st.text_area("database_user", value=dbinfo_row.get('database_user', ''), max_chars=100, key="update_database_user_5")
             update_data['database_password'] = st.text_area("database_password", value=dbinfo_row.get('database_password', ''), max_chars=100, key="update_database_password")
             update_data['database_type'] = st.text_area("database_type", value=dbinfo_row.get('database_type', ''), max_chars=50, key="update_database_type")
             update_data['database_name'] = st.text_area("database_name", value=dbinfo_row.get('database_name', ''), max_chars=100, key="update_database_name")
@@ -1229,6 +1471,161 @@ with st.expander("Kayıt Güncelle"):
                     st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
         else:
             pass
+
+    elif table_name == "Database Info":
+        try:
+            response = requests.get(f"{backend_url}/database_info")
+            response.raise_for_status()
+            dbinfo_entries = response.json()
+        except requests.exceptions.JSONDecodeError:
+            st.error("Backend'den geçersiz veri geldi (JSONDecodeError).")
+            dbinfo_entries = []
+        except Exception as e:
+            st.error(f"Veri alınırken hata oluştu: {e}")
+            dbinfo_entries = []
+        users = get_users()
+        user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['id'] for u in users} if users else {}
+        if dbinfo_entries:
+            dbinfo_options = {f"{dbinfo['database_id']} - {dbinfo['database_name']}": dbinfo['database_id'] for dbinfo in dbinfo_entries}
+            selected = st.selectbox("Güncellenecek Database Info", list(dbinfo_options.keys()), key="update_dbinfo_select_6")
+            update_id = dbinfo_options[selected]
+            dbinfo_row = next((d for d in dbinfo_entries if d['database_id'] == update_id), None)
+        else:
+            st.success("Güncellenecek database info yok.")
+            update_id = None
+            dbinfo_row = None
+        update_data = {}
+        if dbinfo_row:
+            update_data['database_ip'] = st.text_area("database_ip", value=dbinfo_row.get('database_ip', ''), max_chars=100, key="update_database_ip_6")
+            update_data['database_port'] = st.text_area("database_port", value=dbinfo_row.get('database_port', ''), max_chars=100, key="update_database_port_6")
+            port_invalid = update_data['database_port'] and not str(update_data['database_port']).isdigit()
+            port_style = "border: 2px solid red;" if port_invalid else ""
+            st.markdown(f'<style>textarea[key="update_database_port_6"] {{{port_style}}}</style>', unsafe_allow_html=True)
+            if port_invalid:
+                st.markdown('<div style="color:red; font-size:12px;">Lütfen sadece rakam girin (örn: 1234)</div>', unsafe_allow_html=True)
+            update_data['database_user'] = st.text_area("database_user", value=dbinfo_row.get('database_user', ''), max_chars=100, key="update_database_user_6")
+            update_data['database_password'] = st.text_area("database_password", value=dbinfo_row.get('database_password', ''), max_chars=100, key="update_database_password")
+            update_data['database_type'] = st.text_area("database_type", value=dbinfo_row.get('database_type', ''), max_chars=50, key="update_database_type")
+            update_data['database_name'] = st.text_area("database_name", value=dbinfo_row.get('database_name', ''), max_chars=100, key="update_database_name")
+            if user_options:
+                user_display = st.selectbox("user_id (Users tablosundan)", list(user_options.keys()), index=list(user_options.values()).index(dbinfo_row.get('user_id', None)) if dbinfo_row.get('user_id', None) in user_options.values() else 0, key="update_dbinfo_user_id")
+                update_data['user_id'] = user_options[user_display]
+            else:
+                update_data['user_id'] = st.text_input("user_id", value=str(dbinfo_row.get('user_id', '')), key="update_dbinfo_user_id_text")
+        if st.button("Güncelle", key="update_button_dbinfo"):
+            if dbinfo_row:
+                try:
+                    resp = requests.put(f"{backend_url}/{endpoint}/{update_id}", json=update_data)
+                    if resp.status_code == 200:
+                        st.session_state["success_message"] = "Kayıt güncellendi!"
+                        st.session_state["show_table"] = True
+                        st.rerun()
+                    else:
+                        error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
+                        st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+                        if error_msg and not (isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype'))):
+                            st.error(error_msg)
+                except Exception as e:
+                    st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+        else:
+            pass
+
+    else:
+        # Kullanıcı ekleme formunu sıfırlamak için form key'i kullanalım
+        if 'user_add_form_key' not in st.session_state:
+            st.session_state['user_add_form_key'] = 0
+        add_data = {}
+        for field in fields:
+            fname = field["name"]
+            ftype = field["type"]
+            if fname in ["create_date", "change_date"]:
+                continue  # Bu alanları atla
+            if table_name == "Users" and fname == "role_id":
+                roles = get_roles()
+                role_names = [r['role_name'] for r in roles]
+                add_data['role_name'] = st.selectbox("Rol", role_names, key=f"add_role_{st.session_state['user_add_form_key']}")
+            elif ftype == "bool":
+                add_data[fname] = st.selectbox(fname, ["Evet", "Hayır"], key=f"add_{fname}_{st.session_state['user_add_form_key']}") == "Evet"
+            elif ftype == "json":
+                add_data[fname] = st.text_area(fname + " (JSON)", value="{}", key=f"add_{fname}_{st.session_state['user_add_form_key']}")
+            elif ftype == "number":
+                if not (table_name == "Users" and fname == "role_id"):
+                    add_data[fname] = st.number_input(fname, step=1, format="%d", key=f"add_{fname}_{st.session_state['user_add_form_key']}")
+            else:
+                max_chars = 100 if fname in ["name", "surname"] else None
+                add_data[fname] = st.text_input(fname, max_chars=max_chars, key=f"add_{fname}_{st.session_state['user_add_form_key']}")
+                if max_chars and add_data[fname] and len(add_data[fname]) > max_chars:
+                    st.markdown(f'<div style="color:red; font-size:12px;">En fazla {max_chars} karakter girebilirsiniz.</div>', unsafe_allow_html=True)
+                if fname == "e_mail" and add_data[fname] and not is_valid_email(add_data[fname]):
+                    st.markdown('<div style="color:red; font-size:12px;">Lütfen geçerli bir e-posta adresi girin (ör: kisi@site.com)</div>', unsafe_allow_html=True)
+        if st.button("Ekle", key=f"add_user_button_{st.session_state['user_add_form_key']}"):
+            for field in fields:
+                if field["name"] in ["create_date", "change_date"]:
+                    continue
+                if field["type"] == "json":
+                    try:
+                        add_data[field["name"]] = json.loads(add_data[field["name"]]) if add_data[field["name"]] else {}
+                    except Exception:
+                        add_data[field["name"]] = {}
+            if table_name == "Users":
+                selected_role_name = add_data.pop('role_name')
+                roles = get_roles()
+                add_data['role_id'] = next((r['role_id'] for r in roles if r['role_name'] == selected_role_name), None)
+                email = add_data.get("e_mail", "")
+                if not is_valid_email(email):
+                    st.error("Lütfen geçerli bir e-posta adresi girin (ör: kisi@site.com)")
+                else:
+                    try:
+                        resp = requests.post(f"{backend_url}/{endpoint}", json=add_data)
+                        if resp.status_code == 200:
+                            st.session_state["success_message"] = "Kişi eklendi!"
+                            st.session_state['user_add_form_key'] += 1
+                            st.rerun()
+                        else:
+                            try:
+                                error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
+                                if isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype')):
+                                    st.error('Geçersiz giriş, lütfen alanları kontrol edin.')
+                                elif isinstance(error_msg, str) and (
+                                    'already exists' in error_msg.lower() or
+                                    'duplicate' in error_msg.lower() or
+                                    'unique constraint' in error_msg.lower() or
+                                    'not unique' in error_msg.lower()
+                                ):
+                                    if 'e_mail' in error_msg.lower() or 'email' in error_msg.lower() or 'id' in error_msg.lower() or 'name' in error_msg.lower():
+                                        st.error('Bu bilgilerle zaten bir kullanıcı mevcut. Lütfen farklı bilgilerle tekrar deneyin.')
+                                    else:
+                                        st.error('Bu kayıt zaten mevcut.')
+                                else:
+                                    st.error(error_msg)
+                            except Exception:
+                                st.error('Geçersiz giriş, lütfen alanları kontrol edin.')
+                    except Exception as e:
+                        st.error(str(e))
+            else:
+                try:
+                    resp = requests.post(f"{backend_url}/{endpoint}", json=add_data)
+                    if resp.status_code == 200:
+                        st.session_state["success_message"] = "Kayıt eklendi!"
+                        st.rerun()
+                    else:
+                        try:
+                            error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
+                            if isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype')):
+                                st.error('Geçersiz giriş, lütfen alanları kontrol edin.')
+                            elif isinstance(error_msg, str) and (
+                                'already exists' in error_msg.lower() or
+                                'duplicate' in error_msg.lower() or
+                                'unique constraint' in error_msg.lower() or
+                                'not unique' in error_msg.lower()
+                            ):
+                                st.error('Bu kayıt zaten mevcut.')
+                            else:
+                                st.error(error_msg)
+                        except Exception:
+                            st.error(resp.text)
+                except Exception as e:
+                    st.error(str(e))
 
 # Auto Prompt'taki python_code alanı için Courier fontu
 st.markdown(
