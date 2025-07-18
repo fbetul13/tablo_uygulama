@@ -500,10 +500,9 @@ with st.expander("Yeni Kayıt Ekle"):
         query = form.text_area("query")
         import re
         query_invalid = False
-        if query:
-            if not re.match(r"^[a-zA-Z0-9 .,;:!?'\"()\[\]{}\-_\/\\\n\r]*$", query):
-                query_invalid = True
-                form.markdown('<div style="color:red; font-size:12px;">Lütfen sadece metin ve temel noktalama işaretleri girin.</div>', unsafe_allow_html=True)
+        if query and not re.match(r"^[a-zA-Z0-9 .,;:!?'\"()\[\]{}\-_\/\\\n\r]*$", query):
+            query_invalid = True
+            form.markdown('<div style="color:red; font-size:12px;">Lütfen sadece metin ve temel noktalama işaretleri girin.</div>', unsafe_allow_html=True)
         user_id = form.selectbox("user_id (Users tablosundan)", list(user_options.keys())) if user_options else form.text_input("user_id")
         asistan_id = form.selectbox("asistan_id (Assistants tablosundan)", list(assistant_options.keys())) if assistant_options else form.text_input("asistan_id")
         database_id = form.selectbox("database_id (Database Info tablosundan)", list(database_options.keys())) if database_options else form.text_input("database_id")
@@ -517,7 +516,7 @@ with st.expander("Yeni Kayıt Ekle"):
         submitted = form.form_submit_button("Ekle")
         if submitted:
             if (working_platform and len(working_platform) > 100) or (query_name and len(query_name) > 100) or query_invalid:
-                pass  # Sadece kutu altında uyarı gösterilecek, genel hata gösterilmesin
+                pass  # Sadece kutu altında uyarı gösterilecek, kayıt yapılmayacak
             else:
                 try:
                     add_data = {
@@ -1166,10 +1165,9 @@ with st.expander("Kayıt Güncelle"):
         query = form.text_area("query")
         import re
         query_invalid = False
-        if query:
-            if not re.match(r"^[a-zA-Z0-9 .,;:!?'\"()\[\]{}\-_\/\\\n\r]*$", query):
-                query_invalid = True
-                form.markdown('<div style="color:red; font-size:12px;">Lütfen sadece metin ve temel noktalama işaretleri girin.</div>', unsafe_allow_html=True)
+        if query and not re.match(r"^[a-zA-Z0-9 .,;:!?'\"()\[\]{}\-_\/\\\n\r]*$", query):
+            query_invalid = True
+            form.markdown('<div style="color:red; font-size:12px;">Lütfen sadece metin ve temel noktalama işaretleri girin.</div>', unsafe_allow_html=True)
         user_id = form.selectbox("user_id (Users tablosundan)", list(user_options.keys())) if user_options else form.text_input("user_id")
         asistan_id = form.selectbox("asistan_id (Assistants tablosundan)", list(assistant_options.keys())) if assistant_options else form.text_input("asistan_id")
         database_id = form.selectbox("database_id (Database Info tablosundan)", list(database_options.keys())) if database_options else form.text_input("database_id")
@@ -1183,7 +1181,7 @@ with st.expander("Kayıt Güncelle"):
         submitted = form.form_submit_button("Ekle")
         if submitted:
             if (working_platform and len(working_platform) > 100) or (query_name and len(query_name) > 100) or query_invalid:
-                pass  # Sadece kutu altında uyarı gösterilecek, genel hata gösterilmesin
+                pass  # Sadece kutu altında uyarı gösterilecek, kayıt yapılmayacak
             else:
                 try:
                     add_data = {
