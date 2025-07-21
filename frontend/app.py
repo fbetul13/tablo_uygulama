@@ -213,18 +213,29 @@ def pretty_json(val):
             return val
     return str(val)
 
+def on_table_change():
+    st.session_state['force_rerun'] = True
 
 st.title("Tablo Yönetim Paneli")
-if 'last_table' in st.session_state and st.session_state['last_table'] in table_options:
-    default_index = list(table_options.keys()).index(st.session_state['last_table'])
-    table_name = st.sidebar.selectbox("Tablo Seçin", list(table_options.keys()), index=default_index, key="sidebar_table_select")
-    st.session_state['table_name'] = table_name
-    # Eğer kullanıcı farklı bir tablo seçerse last_table'ı sil
-    if table_name != st.session_state['last_table']:
-        del st.session_state['last_table']
+# --- TABLO SEÇİMİ ---
+if 'table_name' in st.session_state and st.session_state['table_name'] in table_options:
+    default_index = list(table_options.keys()).index(st.session_state['table_name'])
 else:
-    table_name = st.sidebar.selectbox("Tablo Seçin", list(table_options.keys()), key="sidebar_table_select")
-    st.session_state['table_name'] = table_name
+    default_index = 0
+
+table_name = st.sidebar.selectbox(
+    "Tablo Seçin",
+    list(table_options.keys()),
+    index=default_index,
+    key="sidebar_table_select",
+    on_change=on_table_change
+)
+st.session_state['table_name'] = table_name
+
+if st.session_state.get('force_rerun', False):
+    st.session_state['force_rerun'] = False
+    st.rerun()
+
 config = table_options[table_name]
 endpoint = config["endpoint"]
 fields = config["fields"]
@@ -379,11 +390,26 @@ with st.expander("Yeni Kayıt Ekle"):
         form = st.form(key=f"assistant_form_{st.session_state.get('assistant_form_key', 0)}")
         # asistan_id alanı title'ın üstünde, sadece rakam girilebilir, boş veya 0 olamaz
         asistan_id_str = form.text_input("asistan_id", value="", max_chars=10, key="add_asistan_id", placeholder="Asistan ID girin (min: 1)")
-        asistan_id = int(asistan_id_str) if asistan_id_str.isdigit() else None
+        # asistan_id kontrolleri
+        asistan_id = int(asistan_id_str) if asistan_id_str.isdigit() or (asistan_id_str and asistan_id_str.lstrip('-').isdigit()) else None
+        asistan_id_invalid = False
+        asistan_id_error_msg = ""
         if not asistan_id_str:
-            form.warning("Asistan ID boş bırakılamaz!")
-        elif asistan_id is None or asistan_id < 1:
-            form.error("Asistan ID sıfır veya negatif olamaz! Lütfen 1 veya daha büyük bir değer girin.")
+            pass
+        elif not (asistan_id_str.lstrip('-').isdigit()):
+            asistan_id_invalid = True
+            asistan_id_error_msg = "Sadece sayı giriniz (ör: 1234)"
+        elif asistan_id is not None and asistan_id == 0:
+            asistan_id_invalid = True
+            asistan_id_error_msg = "Asistan ID 0 olamaz."
+        elif asistan_id is not None and asistan_id < 0:
+            asistan_id_invalid = True
+            asistan_id_error_msg = "Negatif ID olamaz."
+        elif asistan_id is not None and any(a.get('asistan_id') == asistan_id for a in get_assistants()):
+            asistan_id_invalid = True
+            asistan_id_error_msg = "Bu ID ile zaten bir kayıt mevcut. Lütfen farklı bir ID girin."
+        if asistan_id_invalid:
+            form.markdown(f'<div style="color:red; font-size:12px;">{asistan_id_error_msg}</div>', unsafe_allow_html=True)
         title = form.text_area("title", max_chars=255)
         explanation = form.text_area("explanation")
         # working_place başlığı ve tek kutucuk
@@ -423,8 +449,8 @@ with st.expander("Yeni Kayıt Ekle"):
         file_path = form.text_area("file_path", max_chars=255)
         submitted = form.form_submit_button("Ekle")
         if submitted:
-            if not asistan_id_str or asistan_id is None or asistan_id < 1:
-                form.error("Geçerli bir Asistan ID girin (1 veya daha büyük bir sayı).")
+            if asistan_id_invalid:
+                form.error(f"Asistan ID: {asistan_id_error_msg}")
             else:
                 try:
                     add_data = {
@@ -488,6 +514,7 @@ with st.expander("Yeni Kayıt Ekle"):
             assistant_id = form.text_input("assistant_id", max_chars=100)
         form.markdown("**trigger_time:**")
         trigger_time_times = form.text_input("times", max_chars=100, key="add_trigger_time_times")
+        # --- ZAMAN FORMAT KONTROLÜ --- (iptal edildi)
         trigger_time = {"times": trigger_time_times}
         python_code = form.text_area("python_code", height=200, help="Buraya Python kodunuzu yazabilirsiniz.")
         mcrisactive = form.selectbox("mcrisactive", ["Evet", "Hayır"]) == "Evet"
@@ -555,6 +582,10 @@ with st.expander("Yeni Kayıt Ekle"):
         # Ekleme formu
         form = st.form(key=f"dpm_form_add_{st.session_state.get('dpm_form_key', 0)}")
         module_id = form.number_input("module_id", min_value=0, step=1, format="%d")
+        # module_id 0 kontrolü (güncelleme)
+        module_id_zero = module_id == 0
+        if module_id_zero:
+            form.markdown('<div style="color:red; font-size:12px;">Module ID 0 olamaz.</div>', unsafe_allow_html=True)
         query = form.text_area("query")
         import re
         query_invalid = False
@@ -565,6 +596,10 @@ with st.expander("Yeni Kayıt Ekle"):
         asistan_id = form.selectbox("asistan_id (Assistants tablosundan)", list(assistant_options.keys())) if assistant_options else form.text_input("asistan_id")
         database_id = form.selectbox("database_id (Database Info tablosundan)", list(database_options.keys())) if database_options else form.text_input("database_id")
         csv_database_id = form.text_input("csv_database_id")
+        # CSV Database ID sadece rakam olmalı
+        csv_database_id_invalid = csv_database_id and not csv_database_id.isdigit()
+        if csv_database_id_invalid:
+            form.markdown('<div style="color:red; font-size:12px;">Sadece sayı giriniz (ör: 1234)</div>', unsafe_allow_html=True)
         query_name = form.text_area("query_name", max_chars=255)
         working_platform = form.text_area("working_platform", max_chars=100)
         db_schema = form.text_area("db_schema")
@@ -573,7 +608,11 @@ with st.expander("Yeni Kayıt Ekle"):
         data_prep_code = form.text_area("data_prep_code", height=200, max_chars=1000, help="Buraya Python kodunuzu yazabilirsiniz.")
         submitted = form.form_submit_button("Ekle")
         if submitted:
-            if (working_platform and len(working_platform) > 100) or (query_name and len(query_name) > 100) or query_invalid:
+            if module_id_zero:
+                form.error("Module ID 0 olamaz.")
+            elif (working_platform and len(working_platform) > 100) or (query_name and len(query_name) > 100) or query_invalid or csv_database_id_invalid:
+                if csv_database_id_invalid:
+                    form.error("CSV Database ID alanına sadece sayı giriniz.")
                 pass  # Sadece kutu altında uyarı gösterilecek, kayıt yapılmayacak
             else:
                 try:
@@ -1245,6 +1284,10 @@ with st.expander("Kayıt Güncelle"):
         # Güncelleme formu
         form = st.form(key=f"dpm_form_update_{st.session_state.get('dpm_form_key', 0)}")
         module_id = form.number_input("module_id", min_value=0, step=1, format="%d")
+        # module_id 0 kontrolü (güncelleme)
+        module_id_zero = module_id == 0
+        if module_id_zero:
+            form.markdown('<div style="color:red; font-size:12px;">Module ID 0 olamaz.</div>', unsafe_allow_html=True)
         query = form.text_area("query")
         import re
         query_invalid = False
@@ -1255,6 +1298,10 @@ with st.expander("Kayıt Güncelle"):
         asistan_id = form.selectbox("asistan_id (Assistants tablosundan)", list(assistant_options.keys())) if assistant_options else form.text_input("asistan_id")
         database_id = form.selectbox("database_id (Database Info tablosundan)", list(database_options.keys())) if database_options else form.text_input("database_id")
         csv_database_id = form.text_input("csv_database_id")
+        # CSV Database ID sadece rakam olmalı (güncelleme)
+        csv_database_id_invalid = csv_database_id and not csv_database_id.isdigit()
+        if csv_database_id_invalid:
+            form.markdown('<div style="color:red; font-size:12px;">Sadece sayı giriniz (ör: 1234)</div>', unsafe_allow_html=True)
         query_name = form.text_area("query_name", max_chars=255)
         working_platform = form.text_area("working_platform", max_chars=100)
         db_schema = form.text_area("db_schema")
@@ -1263,7 +1310,11 @@ with st.expander("Kayıt Güncelle"):
         data_prep_code = form.text_area("data_prep_code", height=200, max_chars=1000, help="Buraya Python kodunuzu yazabilirsiniz.")
         submitted = form.form_submit_button("Ekle")
         if submitted:
-            if (working_platform and len(working_platform) > 100) or (query_name and len(query_name) > 100) or query_invalid:
+            if module_id_zero:
+                form.error("Module ID 0 olamaz.")
+            elif (working_platform and len(working_platform) > 100) or (query_name and len(query_name) > 100) or query_invalid or csv_database_id_invalid:
+                if csv_database_id_invalid:
+                    form.error("CSV Database ID alanına sadece sayı giriniz.")
                 pass  # Sadece kutu altında uyarı gösterilecek, kayıt yapılmayacak
             else:
                 try:

@@ -468,12 +468,12 @@ def add_auto_prompt():
         trigger_time = json.dumps(trigger_time)
     # assistant_title zorunlu değil, sadece assistant_id ile insert yap
     cur.execute(
-        'INSERT INTO auto_prompt (assistant_id, question, trigger_time, option_code, mcrisactive, receiver_emails) VALUES (%s, %s, %s, %s, %s, %s)',
+        'INSERT INTO auto_prompt (assistant_id, question, trigger_time, python_code, mcrisactive, receiver_emails) VALUES (%s, %s, %s, %s, %s, %s)',
         (
             data.get('assistant_id'),
             data.get('question'),
             trigger_time,
-            data.get('option_code'),
+            data.get('python_code'),
             data.get('mcrisactive'),
             data.get('receiver_emails')
         )
