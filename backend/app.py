@@ -343,8 +343,10 @@ def add_assistant():
     trigger_time = data.get('trigger_time')
     if isinstance(trigger_time, dict):
         trigger_time = json.dumps(trigger_time)
-    fields = ['title', 'explanation', 'parameters', 'user_id', 'working_place', 'default_instructions', 'data_instructions', 'file_path', 'trigger_time']
+    # asistan_id'yi de ekle
+    fields = ['asistan_id', 'title', 'explanation', 'parameters', 'user_id', 'working_place', 'default_instructions', 'data_instructions', 'file_path', 'trigger_time']
     values = [
+        data.get('asistan_id'),
         data.get('title'),
         data.get('explanation'),
         parameters,

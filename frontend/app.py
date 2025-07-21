@@ -3,6 +3,86 @@ import requests
 import pandas as pd
 import json
 import re
+import time
+
+table_options = {
+    "Roles": {
+        "endpoint": "roles",
+        "fields": [
+            {"name": "role_id", "type": "number"},
+            {"name": "role_name", "type": "text"},
+            {"name": "permissions", "type": "json"},
+            {"name": "admin_or_not", "type": "bool"}
+        ]
+    },
+    "Users": {
+        "endpoint": "users",
+        "fields": [
+            {"name": "role_id", "type": "number"},
+            {"name": "name", "type": "text"},
+            {"name": "surname", "type": "text"},
+            {"name": "password", "type": "text"},
+            {"name": "e_mail", "type": "text"},
+            {"name": "institution_working", "type": "text"}
+        ]
+    },
+    "Database Info": {
+        "endpoint": "database_info",
+        "fields": [
+            {"name": "database_ip", "type": "text"},
+            {"name": "database_port", "type": "text"},
+            {"name": "database_user", "type": "text"},
+            {"name": "database_password", "type": "text"},
+            {"name": "database_type", "type": "text"},
+            {"name": "database_name", "type": "text"},
+            {"name": "user_id", "type": "number"}
+        ]
+    },
+    "Data Prepare Modules": {
+        "endpoint": "data_prepare_modules",
+        "fields": [
+            {"name": "module_id", "type": "number"},
+            {"name": "module_name", "type": "text"},
+            {"name": "description", "type": "text"},
+            {"name": "user_id", "type": "number"},
+            {"name": "asistan_id", "type": "number"},
+            {"name": "database_id", "type": "number"},
+            {"name": "csv_database_id", "type": "number"},
+            {"name": "query", "type": "text"},
+            {"name": "working_platform", "type": "text"},
+            {"name": "query_name", "type": "text"},
+            {"name": "db_schema", "type": "text"},
+            {"name": "documents_id", "type": "number"},
+            {"name": "csv_db_schema", "type": "text"},
+            {"name": "data_prep_code", "type": "text"}
+        ]
+    },
+    "Assistants": {
+        "endpoint": "assistants",
+        "fields": [
+            {"name": "title", "type": "text"},
+            {"name": "explanation", "type": "text"},
+            {"name": "parameters", "type": "json"},
+            {"name": "user_id", "type": "number"},
+            {"name": "working_place", "type": "json"},
+            {"name": "default_instructions", "type": "text"},
+            {"name": "data_instructions", "type": "text"},
+            {"name": "file_path", "type": "text"},
+            {"name": "trigger_time", "type": "json"}
+        ]
+    },
+    "Auto Prompt": {
+        "endpoint": "auto_prompt",
+        "fields": [
+            {"name": "question", "type": "text"},
+            {"name": "assistant_title", "type": "text"},
+            {"name": "trigger_time", "type": "json"},
+            {"name": "python_code", "type": "text"},
+            {"name": "mcrisactive", "type": "bool"},
+            {"name": "receiver_emails", "type": "text"}
+        ]
+    }
+}
 
 # Streamlit frontend'de backend'e istek atmak için:
 backend_url = "http://tablo_uygulama-backend-1:8000"
@@ -17,6 +97,39 @@ if "role_form_key" not in st.session_state:
 
 if "show_table" not in st.session_state:
     st.session_state["show_table"] = False
+
+# --- GERİ AL (UNDO) BLOĞU ---
+# table_options değişkeni dosyanın başında tanımlı ve globaldir, burada erişilebilir olmalı
+if "last_deleted" in st.session_state:
+    deleted = st.session_state["last_deleted"]
+    # İlk gösterim zamanı kaydedilmemişse kaydet
+    if "last_deleted_time" not in st.session_state:
+        st.session_state["last_deleted_time"] = time.time()
+    col1, col2 = st.columns([4,1])
+    with col1:
+        st.warning(f"{deleted['table_name']} tablosundan bir kayıt silindi. Geri almak ister misiniz?")
+    with col2:
+        if st.button("Geri Al", key="undo_delete"):
+            try:
+                endpoint = table_options[deleted['table_name']]['endpoint']
+                # Şu anki tabloyu kaydet
+                st.session_state['last_table'] = st.session_state.get('table_name', deleted['table_name'])
+                resp = requests.post(f"{backend_url}/{endpoint}", json=deleted['data'])
+                if resp.status_code == 200:
+                    st.session_state["success_message"] = "Kayıt başarıyla geri alındı!"
+                    del st.session_state["last_deleted"]
+                    if "last_deleted_time" in st.session_state:
+                        del st.session_state["last_deleted_time"]
+                    st.rerun()
+                else:
+                    st.error("Geri alma başarısız: " + resp.text)
+            except Exception as e:
+                st.error(f"Geri alma başarısız: {e}")
+    # 15 saniye geçtiyse uyarıyı kaldır
+    if time.time() - st.session_state["last_deleted_time"] > 15:
+        del st.session_state["last_deleted"]
+        del st.session_state["last_deleted_time"]
+        st.rerun()
 
 # Custom CSS for alert boxes (KALDIRILDI)
 
@@ -100,87 +213,18 @@ def pretty_json(val):
             return val
     return str(val)
 
-table_options = {
-    "Roles": {
-        "endpoint": "roles",
-        "fields": [
-            {"name": "role_id", "type": "number"},
-            {"name": "role_name", "type": "text"},
-            {"name": "permissions", "type": "json"},
-            {"name": "admin_or_not", "type": "bool"}
-        ]
-    },
-    "Users": {
-        "endpoint": "users",
-        "fields": [
-            {"name": "role_id", "type": "number"},
-            {"name": "name", "type": "text"},
-            {"name": "surname", "type": "text"},
-            {"name": "password", "type": "text"},
-            {"name": "e_mail", "type": "text"},
-            {"name": "institution_working", "type": "text"}
-        ]
-    },
-    "Database Info": {
-        "endpoint": "database_info",
-        "fields": [
-            {"name": "database_ip", "type": "text"},
-            {"name": "database_port", "type": "text"},
-            {"name": "database_user", "type": "text"},
-            {"name": "database_password", "type": "text"},
-            {"name": "database_type", "type": "text"},
-            {"name": "database_name", "type": "text"},
-            {"name": "user_id", "type": "number"}
-        ]
-    },
-    "Data Prepare Modules": {
-        "endpoint": "data_prepare_modules",
-        "fields": [
-            {"name": "module_id", "type": "number"},
-            {"name": "module_name", "type": "text"},
-            {"name": "description", "type": "text"},
-            {"name": "user_id", "type": "number"},
-            {"name": "asistan_id", "type": "number"},
-            {"name": "database_id", "type": "number"},
-            {"name": "csv_database_id", "type": "number"},
-            {"name": "query", "type": "text"},
-            {"name": "working_platform", "type": "text"},
-            {"name": "query_name", "type": "text"},
-            {"name": "db_schema", "type": "text"},
-            {"name": "documents_id", "type": "number"},
-            {"name": "csv_db_schema", "type": "text"},
-            {"name": "data_prep_code", "type": "text"}
-        ]
-    },
-    "Assistants": {
-        "endpoint": "assistants",
-        "fields": [
-            {"name": "title", "type": "text"},
-            {"name": "explanation", "type": "text"},
-            {"name": "parameters", "type": "json"},
-            {"name": "user_id", "type": "number"},
-            {"name": "working_place", "type": "json"},
-            {"name": "default_instructions", "type": "text"},
-            {"name": "data_instructions", "type": "text"},
-            {"name": "file_path", "type": "text"},
-            {"name": "trigger_time", "type": "json"}
-        ]
-    },
-    "Auto Prompt": {
-        "endpoint": "auto_prompt",
-        "fields": [
-            {"name": "question", "type": "text"},
-            {"name": "assistant_title", "type": "text"},
-            {"name": "trigger_time", "type": "json"},
-            {"name": "python_code", "type": "text"},
-            {"name": "mcrisactive", "type": "bool"},
-            {"name": "receiver_emails", "type": "text"}
-        ]
-    }
-}
 
 st.title("Tablo Yönetim Paneli")
-table_name = st.sidebar.selectbox("Tablo Seçin", list(table_options.keys()))
+if 'last_table' in st.session_state and st.session_state['last_table'] in table_options:
+    default_index = list(table_options.keys()).index(st.session_state['last_table'])
+    table_name = st.sidebar.selectbox("Tablo Seçin", list(table_options.keys()), index=default_index, key="sidebar_table_select")
+    st.session_state['table_name'] = table_name
+    # Eğer kullanıcı farklı bir tablo seçerse last_table'ı sil
+    if table_name != st.session_state['last_table']:
+        del st.session_state['last_table']
+else:
+    table_name = st.sidebar.selectbox("Tablo Seçin", list(table_options.keys()), key="sidebar_table_select")
+    st.session_state['table_name'] = table_name
 config = table_options[table_name]
 endpoint = config["endpoint"]
 fields = config["fields"]
@@ -302,6 +346,7 @@ with st.expander("Yeni Kayıt Ekle"):
                     if resp.status_code == 200:
                         st.session_state["success_message"] = "Kayıt eklendi!"
                         st.session_state["role_form_key"] += 1
+                        st.session_state['last_table'] = table_name
                         st.rerun()
                     else:
                         try:
@@ -332,6 +377,13 @@ with st.expander("Yeni Kayıt Ekle"):
         users = get_users()
         user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['id'] for u in users} if users else {}
         form = st.form(key=f"assistant_form_{st.session_state.get('assistant_form_key', 0)}")
+        # asistan_id alanı title'ın üstünde, sadece rakam girilebilir, boş veya 0 olamaz
+        asistan_id_str = form.text_input("asistan_id", value="", max_chars=10, key="add_asistan_id", placeholder="Asistan ID girin (min: 1)")
+        asistan_id = int(asistan_id_str) if asistan_id_str.isdigit() else None
+        if not asistan_id_str:
+            form.warning("Asistan ID boş bırakılamaz!")
+        elif asistan_id is None or asistan_id < 1:
+            form.error("Asistan ID sıfır veya negatif olamaz! Lütfen 1 veya daha büyük bir değer girin.")
         title = form.text_area("title", max_chars=255)
         explanation = form.text_area("explanation")
         # working_place başlığı ve tek kutucuk
@@ -371,48 +423,53 @@ with st.expander("Yeni Kayıt Ekle"):
         file_path = form.text_area("file_path", max_chars=255)
         submitted = form.form_submit_button("Ekle")
         if submitted:
-            try:
-                add_data = {
-                    "title": title,
-                    "explanation": explanation,
-                    "parameters": parameters,
-                    "user_id": user_id,
-                    "working_place": working_place,
-                    "default_instructions": default_instructions,
-                    "data_instructions": data_instructions,
-                    "file_path": file_path,
-                    "trigger_time": trigger_time
-                }
-                resp = requests.post(f"{backend_url}/assistants", json=add_data)
-                if resp.status_code == 200:
-                    st.session_state["success_message"] = "Kayıt eklendi!"
-                    st.session_state["assistant_form_key"] = st.session_state.get('assistant_form_key', 0) + 1
-                    st.rerun()
-                else:
-                    try:
-                        error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
-                        if isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype')):
-                            form.error('Geçersiz giriş, lütfen alanları kontrol edin.')
-                        elif isinstance(error_msg, str) and (
-                            'already exists' in error_msg.lower() or
-                            'duplicate' in error_msg.lower() or
-                            'unique constraint' in error_msg.lower() or
-                            'not unique' in error_msg.lower()
-                        ):
-                            if 'e_mail' in error_msg.lower() or 'email' in error_msg.lower():
-                                form.error('Bu e-posta adresiyle zaten bir kullanıcı var.')
-                            elif 'id' in error_msg.lower():
-                                form.error('Bu ID ile zaten bir kayıt mevcut.')
-                            elif 'name' in error_msg.lower():
-                                form.error('Bu isimle bir kayıt zaten eklenmiş.')
+            if not asistan_id_str or asistan_id is None or asistan_id < 1:
+                form.error("Geçerli bir Asistan ID girin (1 veya daha büyük bir sayı).")
+            else:
+                try:
+                    add_data = {
+                        "asistan_id": asistan_id,
+                        "title": title,
+                        "explanation": explanation,
+                        "parameters": parameters,
+                        "user_id": user_id,
+                        "working_place": working_place,
+                        "default_instructions": default_instructions,
+                        "data_instructions": data_instructions,
+                        "file_path": file_path,
+                        "trigger_time": trigger_time
+                    }
+                    resp = requests.post(f"{backend_url}/assistants", json=add_data)
+                    if resp.status_code == 200:
+                        st.session_state["success_message"] = "Kayıt eklendi!"
+                        st.session_state["assistant_form_key"] = st.session_state.get('assistant_form_key', 0) + 1
+                        st.session_state['last_table'] = table_name
+                        st.rerun()
+                    else:
+                        try:
+                            error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
+                            if isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype')):
+                                form.error('Geçersiz giriş, lütfen alanları kontrol edin.')
+                            elif isinstance(error_msg, str) and (
+                                'already exists' in error_msg.lower() or
+                                'duplicate' in error_msg.lower() or
+                                'unique constraint' in error_msg.lower() or
+                                'not unique' in error_msg.lower()
+                            ):
+                                if 'e_mail' in error_msg.lower() or 'email' in error_msg.lower():
+                                    form.error('Bu e-posta adresiyle zaten bir kullanıcı var.')
+                                elif 'id' in error_msg.lower():
+                                    form.error('Bu ID ile zaten bir kayıt mevcut.')
+                                elif 'name' in error_msg.lower():
+                                    form.error('Bu isimle bir kayıt zaten eklenmiş.')
+                                else:
+                                    form.error('Bu kayıt zaten mevcut.')
                             else:
-                                form.error('Bu kayıt zaten mevcut.')
-                        else:
-                            form.error(error_msg)
-                    except Exception:
-                        form.error('Geçersiz giriş, lütfen alanları kontrol edin.')
-            except Exception as e:
-                form.error(f"Kayıt eklenemedi: {e}")
+                                form.error(error_msg)
+                        except Exception:
+                            form.error('Geçersiz giriş, lütfen alanları kontrol edin.')
+                except Exception as e:
+                    form.error(f"Kayıt eklenemedi: {e}")
     elif table_name == "Auto Prompt":
         # Assistants tablosundan asistan_id'leri çek
         try:
@@ -461,6 +518,7 @@ with st.expander("Yeni Kayıt Ekle"):
                     if resp.status_code == 200:
                         st.session_state["success_message"] = "Kayıt eklendi!"
                         st.session_state["auto_prompt_form_key"] = st.session_state.get('auto_prompt_form_key', 0) + 1
+                        st.session_state['last_table'] = table_name
                         st.rerun()
                     else:
                         try:
@@ -537,6 +595,7 @@ with st.expander("Yeni Kayıt Ekle"):
                     if resp.status_code == 200:
                         st.session_state["success_message"] = "Kayıt eklendi!"
                         st.session_state["dpm_form_key"] = st.session_state.get('dpm_form_key', 0) + 1
+                        st.session_state['last_table'] = table_name
                         st.rerun()
                     else:
                         try:
@@ -588,6 +647,7 @@ with st.expander("Yeni Kayıt Ekle"):
                 if resp.status_code == 200:
                     st.session_state["success_message"] = "Kayıt eklendi!"
                     st.session_state["dbinfo_form_key"] = st.session_state.get('dbinfo_form_key', 0) + 1
+                    st.session_state['last_table'] = table_name
                     st.rerun()
                 else:
                     try:
@@ -658,6 +718,7 @@ with st.expander("Yeni Kayıt Ekle"):
                         if resp.status_code == 200:
                             st.session_state["success_message"] = "Kişi eklendi!"
                             st.session_state['user_add_form_key'] += 1
+                            st.session_state['last_table'] = table_name
                             st.rerun()
                         else:
                             try:
@@ -687,6 +748,8 @@ with st.expander("Yeni Kayıt Ekle"):
                     resp = requests.post(f"{backend_url}/{endpoint}", json=add_data)
                     if resp.status_code == 200:
                         st.session_state["success_message"] = "Kayıt eklendi!"
+                        st.session_state['user_add_form_key'] += 1
+                        st.session_state['last_table'] = table_name
                         st.rerun()
                     else:
                         try:
@@ -722,9 +785,13 @@ with st.expander("Kayıt Sil"):
         if st.button("Sil", key="delete_button_assistants"):
             if delete_id:
                 try:
+                    # Silinecek kaydı bul ve sakla
+                    deleted_row = next((a for a in assistants if a['asistan_id'] == delete_id), None)
                     resp = requests.delete(f"{backend_url}/assistants/{delete_id}")
                     if resp.status_code == 200:
                         st.success("Kayıt silindi!")
+                        if deleted_row:
+                            st.session_state["last_deleted"] = {"table_name": "Assistants", "data": deleted_row}
                         st.rerun()
                     else:
                         st.error("Kayıt silinemedi: " + resp.text)
@@ -753,9 +820,12 @@ with st.expander("Kayıt Sil"):
         if st.button("Sil", key="delete_button_auto_prompt"):
             if delete_id:
                 try:
+                    deleted_row = next((ap for ap in auto_prompts if ap['prompt_id'] == delete_id), None)
                     resp = requests.delete(f"{backend_url}/auto_prompt/{delete_id}")
                     if resp.status_code == 200:
                         st.success("Kayıt silindi!")
+                        if deleted_row:
+                            st.session_state["last_deleted"] = {"table_name": "Auto Prompt", "data": deleted_row}
                         st.rerun()
                     else:
                         st.error("Kayıt silinemedi: " + resp.text)
@@ -784,9 +854,12 @@ with st.expander("Kayıt Sil"):
         if st.button("Sil", key="delete_button_dpm"):
             if delete_id:
                 try:
+                    deleted_row = next((dpm for dpm in dpm_modules if dpm['module_id'] == delete_id), None)
                     resp = requests.delete(f"{backend_url}/data_prepare_modules/{delete_id}")
                     if resp.status_code == 200:
                         st.success("Kayıt silindi!")
+                        if deleted_row:
+                            st.session_state["last_deleted"] = {"table_name": "Data Prepare Modules", "data": deleted_row}
                         st.rerun()
                     else:
                         st.error("Kayıt silinemedi: " + resp.text)
@@ -815,9 +888,12 @@ with st.expander("Kayıt Sil"):
         if st.button("Sil", key="delete_button_dbinfo"):
             if delete_id:
                 try:
+                    deleted_row = next((d for d in dbinfo_entries if d['database_id'] == delete_id), None)
                     resp = requests.delete(f"{backend_url}/database_info/{delete_id}")
                     if resp.status_code == 200:
                         st.success("Kayıt silindi!")
+                        if deleted_row:
+                            st.session_state["last_deleted"] = {"table_name": "Database Info", "data": deleted_row}
                         st.rerun()
                     else:
                         st.error("Kayıt silinemedi: " + resp.text)
@@ -839,9 +915,12 @@ with st.expander("Kayıt Sil"):
         if st.button("Sil", key="delete_button_users"):
             if delete_id:
                 try:
+                    deleted_row = next((u for u in users if u['id'] == delete_id), None)
                     resp = requests.delete(f"{backend_url}/users/{delete_id}")
                     if resp.status_code == 200:
                         st.success("Kişi silindi!")
+                        if deleted_row:
+                            st.session_state["last_deleted"] = {"table_name": "Users", "data": deleted_row}
                         st.rerun()
                     else:
                         st.error("Kayıt silinemedi: " + resp.text)
@@ -869,9 +948,12 @@ with st.expander("Kayıt Sil"):
                 st.error("Lütfen silinecek ID girin.")
             else:
                 try:
+                    deleted_row = next((r for r in roles if r['role_id'] == delete_id), None)
                     resp = requests.delete(f"{backend_url}/roles/{delete_id}")
                     if resp.status_code == 200:
                         st.markdown('<span style="color:green; font-size:16px;">Kayıt silindi.</span>', unsafe_allow_html=True)
+                        if deleted_row:
+                            st.session_state["last_deleted"] = {"table_name": "Roles", "data": deleted_row}
                         st.rerun()
                     else:
                         # Hata mesajını kullanıcı dostu göster
@@ -904,6 +986,7 @@ with st.expander("Kayıt Güncelle"):
             assistant_row = None
         update_data = {}
         if assistant_row:
+            # asistan_id alanı güncelleme formunda gösterilmesin
             update_data['title'] = st.text_area("title", value=assistant_row.get('title', ''), key="update_title")
             update_data['explanation'] = st.text_area("explanation", value=assistant_row.get('explanation', ''), key="update_explanation")
             parameters_val = pretty_json(assistant_row.get('parameters'))
@@ -1202,6 +1285,7 @@ with st.expander("Kayıt Güncelle"):
                     if resp.status_code == 200:
                         st.session_state["success_message"] = "Kayıt eklendi!"
                         st.session_state["dpm_form_key"] = st.session_state.get('dpm_form_key', 0) + 1
+                        st.session_state['last_table'] = table_name
                         st.rerun()
                     else:
                         try:
@@ -1388,6 +1472,7 @@ with st.expander("Kayıt Güncelle"):
                         if resp.status_code == 200:
                             st.session_state["success_message"] = "Kişi eklendi!"
                             st.session_state['user_add_form_key'] += 1
+                            st.session_state['last_table'] = table_name
                             st.rerun()
                         else:
                             try:
@@ -1417,6 +1502,8 @@ with st.expander("Kayıt Güncelle"):
                     resp = requests.post(f"{backend_url}/{endpoint}", json=add_data)
                     if resp.status_code == 200:
                         st.session_state["success_message"] = "Kayıt eklendi!"
+                        st.session_state['user_add_form_key'] += 1
+                        st.session_state['last_table'] = table_name
                         st.rerun()
                     else:
                         try:
