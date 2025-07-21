@@ -466,22 +466,11 @@ def add_auto_prompt():
     trigger_time = data.get('trigger_time')
     if isinstance(trigger_time, dict):
         trigger_time = json.dumps(trigger_time)
-    assistant_title = data.get('assistant_title')
-    if not assistant_title:
-        cur.close()
-        conn.close()
-        return jsonify({'error': 'assistant_title gerekli'}), 400
-    cur.execute('SELECT asistan_id FROM assistants WHERE title = %s', (assistant_title,))
-    row = cur.fetchone()
-    if not row:
-        cur.close()
-        conn.close()
-        return jsonify({'error': 'assistant_title bulunamadı'}), 400
-    assistant_id = row[0]
+    # assistant_title zorunlu değil, sadece assistant_id ile insert yap
     cur.execute(
         'INSERT INTO auto_prompt (assistant_id, question, trigger_time, option_code, mcrisactive, receiver_emails) VALUES (%s, %s, %s, %s, %s, %s)',
         (
-            assistant_id,
+            data.get('assistant_id'),
             data.get('question'),
             trigger_time,
             data.get('option_code'),
