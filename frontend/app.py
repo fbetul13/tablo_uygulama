@@ -596,14 +596,21 @@ with st.expander("Yeni Kayıt Ekle", expanded=st.session_state["add_expander_ope
         if not module_id_str:
             module_id_invalid = True
             module_id_error = "Module ID zorunludur."
-        elif not module_id_str.isdigit():
+        elif not module_id_str.isdigit() and not (module_id_str.startswith('-') and module_id_str[1:].isdigit()):
             module_id_invalid = True
             module_id_error = "Sadece sayı giriniz."
         else:
-            module_id = int(module_id_str)
-            if module_id == 0:
+            try:
+                module_id = int(module_id_str)
+                if module_id == 0:
+                    module_id_invalid = True
+                    module_id_error = "Module ID 0 olamaz."
+                elif module_id < 0:
+                    module_id_invalid = True
+                    module_id_error = "Module ID 0'dan büyük olmalı."
+            except Exception:
                 module_id_invalid = True
-                module_id_error = "Module ID 0 olamaz."
+                module_id_error = "Sadece sayı giriniz."
         if module_id_invalid and module_id_error:
             form.markdown(f'<div style="color:red; font-size:12px;">{module_id_error}</div>', unsafe_allow_html=True)
         query = form.text_area("query")
