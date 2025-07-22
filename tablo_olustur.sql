@@ -1,11 +1,11 @@
-CREATE TABLE roles (
+CREATE TABLE Roles (
     role_id SERIAL PRIMARY KEY,
     role_name VARCHAR(100) NOT NULL,
     permissions TEXT,
     admin_or_not BOOLEAN DEFAULT FALSE
 );
 
-CREATE TABLE users (
+CREATE TABLE Users (
     id SERIAL PRIMARY KEY,
     role_id INTEGER REFERENCES Roles(role_id),
     name VARCHAR(100),
