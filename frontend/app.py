@@ -590,17 +590,22 @@ with st.expander("Yeni Kayıt Ekle", expanded=st.session_state["add_expander_ope
         # Ekleme formu
         form = st.form(key=f"dpm_form_add_{st.session_state.get('dpm_form_key', 0)}")
         module_id_str = form.text_input("module_id", value="", max_chars=10, key="add_module_id", placeholder="Module ID girin (sadece rakam)")
-        module_id = int(module_id_str) if module_id_str.isdigit() else None
+        module_id = None
         module_id_invalid = False
+        module_id_error = None
         if not module_id_str:
             module_id_invalid = True
-            form.markdown('<div style="color:red; font-size:12px;">Module ID zorunludur.</div>', unsafe_allow_html=True)
+            module_id_error = "Module ID zorunludur."
         elif not module_id_str.isdigit():
             module_id_invalid = True
-            form.markdown('<div style="color:red; font-size:12px;">Sadece rakam giriniz.</div>', unsafe_allow_html=True)
-        elif module_id == 0:
-            module_id_invalid = True
-            form.markdown('<div style="color:red; font-size:12px;">Module ID 0 olamaz.</div>', unsafe_allow_html=True)
+            module_id_error = "Sadece sayı giriniz."
+        else:
+            module_id = int(module_id_str)
+            if module_id == 0:
+                module_id_invalid = True
+                module_id_error = "Module ID 0 olamaz."
+        if module_id_invalid and module_id_error:
+            form.markdown(f'<div style="color:red; font-size:12px;">{module_id_error}</div>', unsafe_allow_html=True)
         query = form.text_area("query")
         import re
         query_invalid = False
