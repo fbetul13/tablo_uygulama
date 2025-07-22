@@ -589,10 +589,17 @@ with st.expander("Yeni Kayıt Ekle", expanded=st.session_state["add_expander_ope
         database_options = {f"{d['database_id']} - {d['database_name']} ({d['database_ip']}:{d['database_port']})": d['database_id'] for d in databases} if databases else {}
         # Ekleme formu
         form = st.form(key=f"dpm_form_add_{st.session_state.get('dpm_form_key', 0)}")
-        module_id = form.number_input("module_id", min_value=0, step=1, format="%d")
-        # module_id 0 kontrolü (güncelleme)
-        module_id_zero = module_id == 0
-        if module_id_zero:
+        module_id_str = form.text_input("module_id", value="", max_chars=10, key="add_module_id", placeholder="Module ID girin (sadece rakam)")
+        module_id = int(module_id_str) if module_id_str.isdigit() else None
+        module_id_invalid = False
+        if not module_id_str:
+            module_id_invalid = True
+            form.markdown('<div style="color:red; font-size:12px;">Module ID zorunludur.</div>', unsafe_allow_html=True)
+        elif not module_id_str.isdigit():
+            module_id_invalid = True
+            form.markdown('<div style="color:red; font-size:12px;">Sadece rakam giriniz.</div>', unsafe_allow_html=True)
+        elif module_id == 0:
+            module_id_invalid = True
             form.markdown('<div style="color:red; font-size:12px;">Module ID 0 olamaz.</div>', unsafe_allow_html=True)
         query = form.text_area("query")
         import re
@@ -616,8 +623,8 @@ with st.expander("Yeni Kayıt Ekle", expanded=st.session_state["add_expander_ope
         data_prep_code = form.text_area("data_prep_code", height=200, max_chars=1000, help="Buraya Python kodunuzu yazabilirsiniz.")
         submitted = form.form_submit_button("Ekle")
         if submitted:
-            if module_id_zero:
-                form.error("Module ID 0 olamaz.")
+            if module_id_invalid:
+                form.error("Geçerli bir Module ID giriniz.")
             elif (working_platform and len(working_platform) > 100) or (query_name and len(query_name) > 100) or query_invalid or csv_database_id_invalid:
                 if csv_database_id_invalid:
                     form.error("CSV Database ID alanına sadece sayı giriniz.")
