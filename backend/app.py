@@ -285,11 +285,25 @@ def add_data_prepare_module():
     values = [data.get(f) for f in fields]
     sql_fields = ', '.join(fields)
     sql_placeholders = ', '.join(['%s'] * len(fields))
-    cur.execute(f'INSERT INTO data_prepare_modules ({sql_fields}) VALUES ({sql_placeholders})', values)
-    conn.commit()
-    cur.close()
-    conn.close()
-    return jsonify({'status': 'success'})
+    # module_id eklenecekse başa ekle
+    if data.get('module_id') is not None:
+        fields = ['module_id'] + fields
+        values = [data.get('module_id')] + values
+        sql_fields = ', '.join(fields)
+        sql_placeholders = ', '.join(['%s'] * len(fields))
+    try:
+        cur.execute(f'INSERT INTO data_prepare_modules ({sql_fields}) VALUES ({sql_placeholders})', values)
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        conn.rollback()
+        cur.close()
+        conn.close()
+        if 'duplicate key value violates unique constraint' in str(e) and 'module_id' in str(e):
+            return jsonify({'error': 'Bu module_id zaten mevcut'}), 400
+        return jsonify({'error': str(e)}), 400
 
 @app.route('/data_prepare_modules/<int:module_id>', methods=['DELETE'])
 def delete_data_prepare_module(module_id):
