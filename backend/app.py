@@ -33,7 +33,7 @@ def get_db_connection():
         cur.execute('SET search_path TO llm_platform;')
     return conn
 
-# 1. Roles CRUD
+# 1. roles CRUD
 @app.route('/roles', methods=['GET'])
 def get_roles():
     conn = get_db_connection()
