@@ -98,6 +98,14 @@ if "role_form_key" not in st.session_state:
 if "show_table" not in st.session_state:
     st.session_state["show_table"] = False
 
+# Expander açık/kapalı state'leri
+if "add_expander_open" not in st.session_state:
+    st.session_state["add_expander_open"] = False
+if "delete_expander_open" not in st.session_state:
+    st.session_state["delete_expander_open"] = False
+if "update_expander_open" not in st.session_state:
+    st.session_state["update_expander_open"] = False
+
 # --- GERİ AL (UNDO) BLOĞU ---
 # table_options değişkeni dosyanın başında tanımlı ve globaldir, burada erişilebilir olmalı
 if "last_deleted" in st.session_state:
@@ -309,7 +317,7 @@ if st.session_state["show_table"]:
         st.error(f"Veri alınamadı: {e}")
 
 # Ekle
-with st.expander("Yeni Kayıt Ekle"):
+with st.expander("Yeni Kayıt Ekle", expanded=st.session_state["add_expander_open"]):
     def check_required_fields(field_defs, values_dict):
         missing = []
         for f in field_defs:
@@ -810,7 +818,7 @@ with st.expander("Yeni Kayıt Ekle"):
                     st.error(str(e))
 
 # Sil
-with st.expander("Kayıt Sil"):
+with st.expander("Kayıt Sil", expanded=st.session_state["delete_expander_open"]):
     # Tüm tablolar için silme alanı ve butonu görünür olsun
     if table_name == "Assistants":
         assistants = get_assistants()
@@ -822,6 +830,7 @@ with st.expander("Kayıt Sil"):
             st.success("Silinecek asistan yok.")
             delete_id = None
         if st.button("Sil", key="delete_button_assistants"):
+            st.session_state["delete_expander_open"] = True
             if delete_id:
                 try:
                     # Silinecek kaydı bul ve sakla
@@ -857,6 +866,7 @@ with st.expander("Kayıt Sil"):
             st.success("Silinecek auto prompt yok.")
             delete_id = None
         if st.button("Sil", key="delete_button_auto_prompt"):
+            st.session_state["delete_expander_open"] = True
             if delete_id:
                 try:
                     deleted_row = next((ap for ap in auto_prompts if ap['prompt_id'] == delete_id), None)
@@ -891,6 +901,7 @@ with st.expander("Kayıt Sil"):
             st.success("Silinecek data prepare module yok.")
             delete_id = None
         if st.button("Sil", key="delete_button_dpm"):
+            st.session_state["delete_expander_open"] = True
             if delete_id:
                 try:
                     deleted_row = next((dpm for dpm in dpm_modules if dpm['module_id'] == delete_id), None)
@@ -925,6 +936,7 @@ with st.expander("Kayıt Sil"):
             st.success("Silinecek database info yok.")
             delete_id = None
         if st.button("Sil", key="delete_button_dbinfo"):
+            st.session_state["delete_expander_open"] = True
             if delete_id:
                 try:
                     deleted_row = next((d for d in dbinfo_entries if d['database_id'] == delete_id), None)
@@ -952,6 +964,7 @@ with st.expander("Kayıt Sil"):
             st.success("Silinecek kullanıcı yok.")
             delete_id = None
         if st.button("Sil", key="delete_button_users"):
+            st.session_state["delete_expander_open"] = True
             if delete_id:
                 try:
                     deleted_row = next((u for u in users if u['id'] == delete_id), None)
@@ -983,6 +996,7 @@ with st.expander("Kayıt Sil"):
             st.success("Silinecek rol yok.")
             delete_id = None
         if st.button("Sil", key="delete_button_roles"):
+            st.session_state["delete_expander_open"] = True
             if not delete_id:
                 st.error("Lütfen silinecek ID girin.")
             else:
@@ -1008,7 +1022,7 @@ with st.expander("Kayıt Sil"):
                     st.error(f"Kayıt silinemedi: {e}")
 
 # Güncelle
-with st.expander("Kayıt Güncelle"):
+with st.expander("Kayıt Güncelle", expanded=st.session_state["update_expander_open"]):
     # Tüm tablolar için güncelleme alanı ve butonu görünür olsun
     if table_name == "Assistants":
         assistants = get_assistants()
@@ -1051,6 +1065,7 @@ with st.expander("Kayıt Güncelle"):
             update_data['data_instructions'] = st.text_area("data_instructions", value=assistant_row.get('data_instructions', ''), key="update_data_instructions")
             update_data['file_path'] = st.text_area("file_path", value=assistant_row.get('file_path', ''), key="update_file_path")
         if st.button("Güncelle", key="update_button_assistants"):
+            st.session_state["update_expander_open"] = True
             if assistant_row and (not valid_params or not valid_trigg):
                 st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
             elif assistant_row:
@@ -1100,6 +1115,7 @@ with st.expander("Kayıt Güncelle"):
                 st.markdown('<div style="color:red; font-size:12px;">Lütfen geçerli bir e-posta adresi girin (ör: kisi@site.com)</div>', unsafe_allow_html=True)
             update_data['institution_working'] = st.text_input("institution_working", value=user_row.get('institution_working', ''), key="update_institution_working")
         if st.button("Güncelle", key="update_button_users"):
+            st.session_state["update_expander_open"] = True
             email = update_data.get("e_mail", "")
             if not is_valid_email(email):
                 st.error("Lütfen geçerli bir e-posta adresi girin (ör: kisi@site.com)")
@@ -1244,6 +1260,7 @@ with st.expander("Kayıt Güncelle"):
             if email_error_msg:
                 st.markdown(email_error_msg, unsafe_allow_html=True)
         if st.button("Güncelle", key="update_button_auto_prompt"):
+            st.session_state["update_expander_open"] = True
             if auto_prompt_row and (not valid_trigg or email_warning):
                 st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan ve e-posta adreslerinin geçerli olduğundan emin olun.")
             elif auto_prompt_row:
@@ -1398,6 +1415,7 @@ with st.expander("Kayıt Güncelle"):
             else:
                 update_data['user_id'] = st.text_input("user_id", value=str(dbinfo_row.get('user_id', '')), key="update_dbinfo_user_id_text")
         if st.button("Güncelle", key="update_button_dbinfo"):
+            st.session_state["update_expander_open"] = True
             if dbinfo_row:
                 try:
                     resp = requests.put(f"{backend_url}/{endpoint}/{update_id}", json=update_data)
@@ -1456,6 +1474,7 @@ with st.expander("Kayıt Güncelle"):
             else:
                 update_data['user_id'] = st.text_input("user_id", value=str(dbinfo_row.get('user_id', '')), key="update_dbinfo_user_id_text")
         if st.button("Güncelle", key="update_button_dbinfo"):
+            st.session_state["update_expander_open"] = True
             if dbinfo_row:
                 try:
                     resp = requests.put(f"{backend_url}/{endpoint}/{update_id}", json=update_data)
