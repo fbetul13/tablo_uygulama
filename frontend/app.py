@@ -18,6 +18,7 @@ table_options = {
     "Users": {
         "endpoint": "users",
         "fields": [
+            {"name": "user_id", "type": "number"},
             {"name": "role_id", "type": "number"},
             {"name": "name", "type": "text"},
             {"name": "surname", "type": "text"},
@@ -97,14 +98,6 @@ if "role_form_key" not in st.session_state:
 
 if "show_table" not in st.session_state:
     st.session_state["show_table"] = False
-
-# Expander açık/kapalı state'leri
-if "add_expander_open" not in st.session_state:
-    st.session_state["add_expander_open"] = False
-if "delete_expander_open" not in st.session_state:
-    st.session_state["delete_expander_open"] = False
-if "update_expander_open" not in st.session_state:
-    st.session_state["update_expander_open"] = False
 
 # --- GERİ AL (UNDO) BLOĞU ---
 # table_options değişkeni dosyanın başında tanımlı ve globaldir, burada erişilebilir olmalı
@@ -262,14 +255,15 @@ if st.button("Verileri Listele"):
 if st.session_state["show_table"]:
     try:
         resp = requests.get(f"{backend_url}/{endpoint}")
+       
         data = resp.json()
         if isinstance(data, list) and data:
             if table_name == "Users":
                 for user in data:
                     user['role_name'] = next((r['role_name'] for r in roles if r['role_id'] == user['role_id']), "")
                 df = pd.DataFrame(data)
-                show_cols = ['id', 'role_name', 'name', 'surname', 'e_mail', 'institution_working']
-                show_cols = [c for c in show_cols if c in df.columns]
+                show_cols = ['user_id', 'role_name', 'name', 'surname', 'e_mail', 'institution_working']
+                show_cols = [c for c in show_cols if c in df.columns and c not in ['create_date', 'change_date']]
                 st.dataframe(df[show_cols])
             elif table_name == "Assistants":
                 # JSON alanlarını düzgün göster (çift stringleşmişse iki kez parse et)
@@ -286,38 +280,40 @@ if st.session_state["show_table"]:
                         row[field] = json.dumps(val, ensure_ascii=False, indent=2) if val else ""
                 df = pd.DataFrame(data)
                 show_cols = ['asistan_id', 'title', 'explanation', 'parameters', 'user_id', 'working_place', 'default_instructions', 'data_instructions', 'file_path', 'trigger_time']
-                show_cols = [c for c in show_cols if c in df.columns]
+                show_cols = [c for c in show_cols if c in df.columns and c not in ['create_date', 'change_date']]
                 st.dataframe(df[show_cols])
             elif table_name == "Auto Prompt":
                 df = pd.DataFrame(data)
                 show_cols = ['prompt_id', 'question', 'assistant_title', 'trigger_time', 'python_code', 'mcrisactive', 'receiver_emails']
-                show_cols = [c for c in show_cols if c in df.columns]
+                show_cols = [c for c in show_cols if c in df.columns and c not in ['create_date', 'change_date']]
                 st.dataframe(df[show_cols])
             elif table_name == "Data Prepare Modules":
                 df = pd.DataFrame(data)
                 show_cols = ['module_id', 'query', 'user_id', 'asistan_id', 'database_id', 'csv_database_id', 'query_name', 'working_platform', 'db_schema', 'documents_id', 'csv_db_schema', 'data_prep_code']
-                show_cols = [c for c in show_cols if c in df.columns]
+                show_cols = [c for c in show_cols if c in df.columns and c not in ['create_date', 'change_date']]
                 st.dataframe(df[show_cols])
             elif table_name == "Roles":
                 df = pd.DataFrame(data)
                 show_cols = ['role_id', 'role_name', 'permissions', 'admin_or_not']
-                show_cols = [c for c in show_cols if c in df.columns]
+                show_cols = [c for c in show_cols if c in df.columns and c not in ['create_date', 'change_date']]
                 st.dataframe(df[show_cols])
             elif table_name == "Database Info":
                 df = pd.DataFrame(data)
                 show_cols = ['database_id', 'database_ip', 'database_port', 'database_user', 'database_password', 'database_type', 'database_name', 'user_id']
-                show_cols = [c for c in show_cols if c in df.columns]
+                show_cols = [c for c in show_cols if c in df.columns and c not in ['create_date', 'change_date']]
                 st.dataframe(df[show_cols])
             else:
                 df = pd.DataFrame(data)
                 st.dataframe(df)
+        elif isinstance(data, list) and len(data) == 0:
+            st.info("Tablo boş, hiç kayıt yok.")
         else:
             st.info("Tabloda veri yok.")
     except Exception as e:
         st.error(f"Veri alınamadı: {e}")
 
 # Ekle
-with st.expander("Yeni Kayıt Ekle", expanded=st.session_state["add_expander_open"]):
+with st.expander("Yeni Kayıt Ekle"):
     def check_required_fields(field_defs, values_dict):
         missing = []
         for f in field_defs:
@@ -394,7 +390,7 @@ with st.expander("Yeni Kayıt Ekle", expanded=st.session_state["add_expander_ope
                     form.error(str(e))
     elif table_name == "Assistants":
         users = get_users()
-        user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['id'] for u in users} if users else {}
+        user_options = {f"{u['user_id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['user_id'] for u in users} if users else {}
         form = st.form(key=f"assistant_form_{st.session_state.get('assistant_form_key', 0)}")
         # asistan_id alanı title'ın üstünde, sadece rakam girilebilir, boş veya 0 olamaz
         asistan_id_str = form.text_input("asistan_id", value="", max_chars=10, key="add_asistan_id", placeholder="Asistan ID girin (min: 1)")
@@ -584,35 +580,16 @@ with st.expander("Yeni Kayıt Ekle", expanded=st.session_state["add_expander_ope
         users = get_users()
         assistants = get_assistants()
         databases = get_database_info()
-        user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['id'] for u in users} if users else {}
+        user_options = {f"{u['user_id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['user_id'] for u in users} if users else {}
         assistant_options = {f"{a['asistan_id']} - {a['title']}": a['asistan_id'] for a in assistants} if assistants else {}
         database_options = {f"{d['database_id']} - {d['database_name']} ({d['database_ip']}:{d['database_port']})": d['database_id'] for d in databases} if databases else {}
         # Ekleme formu
         form = st.form(key=f"dpm_form_add_{st.session_state.get('dpm_form_key', 0)}")
-        module_id_str = form.text_input("module_id", value="", max_chars=10, key="add_module_id", placeholder="Module ID girin (sadece rakam)")
-        module_id = None
-        module_id_invalid = False
-        module_id_error = None
-        if not module_id_str:
-            module_id_invalid = True
-            module_id_error = "Module ID zorunludur."
-        elif not module_id_str.isdigit() and not (module_id_str.startswith('-') and module_id_str[1:].isdigit()):
-            module_id_invalid = True
-            module_id_error = "Sadece sayı giriniz."
-        else:
-            try:
-                module_id = int(module_id_str)
-                if module_id == 0:
-                    module_id_invalid = True
-                    module_id_error = "Module ID 0 olamaz."
-                elif module_id < 0:
-                    module_id_invalid = True
-                    module_id_error = "Module ID 0'dan büyük olmalı."
-            except Exception:
-                module_id_invalid = True
-                module_id_error = "Sadece sayı giriniz."
-        if module_id_invalid and module_id_error:
-            form.markdown(f'<div style="color:red; font-size:12px;">{module_id_error}</div>', unsafe_allow_html=True)
+        module_id = form.number_input("module_id", min_value=0, step=1, format="%d")
+        # module_id 0 kontrolü (güncelleme)
+        module_id_zero = module_id == 0
+        if module_id_zero:
+            form.markdown('<div style="color:red; font-size:12px;">Module ID 0 olamaz.</div>', unsafe_allow_html=True)
         query = form.text_area("query")
         import re
         query_invalid = False
@@ -635,8 +612,8 @@ with st.expander("Yeni Kayıt Ekle", expanded=st.session_state["add_expander_ope
         data_prep_code = form.text_area("data_prep_code", height=200, max_chars=1000, help="Buraya Python kodunuzu yazabilirsiniz.")
         submitted = form.form_submit_button("Ekle")
         if submitted:
-            if module_id_invalid:
-                form.error("Geçerli bir Module ID giriniz.")
+            if module_id_zero:
+                form.error("Module ID 0 olamaz.")
             elif (working_platform and len(working_platform) > 100) or (query_name and len(query_name) > 100) or query_invalid or csv_database_id_invalid:
                 if csv_database_id_invalid:
                     form.error("CSV Database ID alanına sadece sayı giriniz.")
@@ -683,7 +660,7 @@ with st.expander("Yeni Kayıt Ekle", expanded=st.session_state["add_expander_ope
                     form.error(str(e))
     elif table_name == "Database Info":
         users = get_users()
-        user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['id'] for u in users} if users else {}
+        user_options = {f"{u['user_id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['user_id'] for u in users} if users else {}
         form = st.form(key=f"dbinfo_form_{st.session_state.get('dbinfo_form_key', 0)}")
         database_ip = form.text_area("database_ip", max_chars=100)
         database_port = form.text_area("database_port", max_chars=100, key="add_database_port")
@@ -748,12 +725,14 @@ with st.expander("Yeni Kayıt Ekle", expanded=st.session_state["add_expander_ope
                 roles = get_roles()
                 role_names = [r['role_name'] for r in roles]
                 add_data['role_name'] = st.selectbox("Rol", role_names, key=f"add_role_{st.session_state['user_add_form_key']}")
+            elif fname == "user_id":
+                add_data[fname] = st.number_input(fname, min_value=1, step=1, format="%d", key=f"add_{fname}_{st.session_state['user_add_form_key']}")
             elif ftype == "bool":
                 add_data[fname] = st.selectbox(fname, ["Evet", "Hayır"], key=f"add_{fname}_{st.session_state['user_add_form_key']}") == "Evet"
             elif ftype == "json":
                 add_data[fname] = st.text_area(fname + " (JSON)", value="{}", key=f"add_{fname}_{st.session_state['user_add_form_key']}")
             elif ftype == "number":
-                if not (table_name == "Users" and fname == "role_id"):
+                if not (table_name == "Users" and fname == "role_id") and fname != "user_id":
                     add_data[fname] = st.number_input(fname, step=1, format="%d", key=f"add_{fname}_{st.session_state['user_add_form_key']}")
             else:
                 max_chars = 100 if fname in ["name", "surname"] else None
@@ -778,6 +757,8 @@ with st.expander("Yeni Kayıt Ekle", expanded=st.session_state["add_expander_ope
                 email = add_data.get("e_mail", "")
                 if not is_valid_email(email):
                     st.error("Lütfen geçerli bir e-posta adresi girin (ör: kisi@site.com)")
+                elif not add_data.get("user_id") or add_data.get("user_id") == 0:
+                    st.error("user_id alanı zorunludur ve 0 olamaz!")
                 else:
                     try:
                         resp = requests.post(f"{backend_url}/{endpoint}", json=add_data)
@@ -837,7 +818,7 @@ with st.expander("Yeni Kayıt Ekle", expanded=st.session_state["add_expander_ope
                     st.error(str(e))
 
 # Sil
-with st.expander("Kayıt Sil", expanded=st.session_state["delete_expander_open"]):
+with st.expander("Kayıt Sil"):
     # Tüm tablolar için silme alanı ve butonu görünür olsun
     if table_name == "Assistants":
         assistants = get_assistants()
@@ -849,7 +830,6 @@ with st.expander("Kayıt Sil", expanded=st.session_state["delete_expander_open"]
             st.success("Silinecek asistan yok.")
             delete_id = None
         if st.button("Sil", key="delete_button_assistants"):
-            st.session_state["delete_expander_open"] = True
             if delete_id:
                 try:
                     # Silinecek kaydı bul ve sakla
@@ -885,7 +865,6 @@ with st.expander("Kayıt Sil", expanded=st.session_state["delete_expander_open"]
             st.success("Silinecek auto prompt yok.")
             delete_id = None
         if st.button("Sil", key="delete_button_auto_prompt"):
-            st.session_state["delete_expander_open"] = True
             if delete_id:
                 try:
                     deleted_row = next((ap for ap in auto_prompts if ap['prompt_id'] == delete_id), None)
@@ -920,7 +899,6 @@ with st.expander("Kayıt Sil", expanded=st.session_state["delete_expander_open"]
             st.success("Silinecek data prepare module yok.")
             delete_id = None
         if st.button("Sil", key="delete_button_dpm"):
-            st.session_state["delete_expander_open"] = True
             if delete_id:
                 try:
                     deleted_row = next((dpm for dpm in dpm_modules if dpm['module_id'] == delete_id), None)
@@ -955,7 +933,6 @@ with st.expander("Kayıt Sil", expanded=st.session_state["delete_expander_open"]
             st.success("Silinecek database info yok.")
             delete_id = None
         if st.button("Sil", key="delete_button_dbinfo"):
-            st.session_state["delete_expander_open"] = True
             if delete_id:
                 try:
                     deleted_row = next((d for d in dbinfo_entries if d['database_id'] == delete_id), None)
@@ -976,17 +953,16 @@ with st.expander("Kayıt Sil", expanded=st.session_state["delete_expander_open"]
         if users:
             for user in users:
                 user['role_name'] = next((r['role_name'] for r in roles if r['role_id'] == user['role_id']), "")
-            user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']}) [{u['role_name']}]": u['id'] for u in users}
+            user_options = {f"{u['user_id']} - {u['name']} {u['surname']} ({u['e_mail']}) [{u['role_name']}]": u['user_id'] for u in users}
             selected = st.selectbox("Silinecek Kişi", list(user_options.keys()), key="delete_user_select")
             delete_id = user_options[selected]
         else:
             st.success("Silinecek kullanıcı yok.")
             delete_id = None
         if st.button("Sil", key="delete_button_users"):
-            st.session_state["delete_expander_open"] = True
             if delete_id:
                 try:
-                    deleted_row = next((u for u in users if u['id'] == delete_id), None)
+                    deleted_row = next((u for u in users if u['user_id'] == delete_id), None)
                     resp = requests.delete(f"{backend_url}/users/{delete_id}")
                     if resp.status_code == 200:
                         st.success("Kişi silindi!")
@@ -1015,7 +991,6 @@ with st.expander("Kayıt Sil", expanded=st.session_state["delete_expander_open"]
             st.success("Silinecek rol yok.")
             delete_id = None
         if st.button("Sil", key="delete_button_roles"):
-            st.session_state["delete_expander_open"] = True
             if not delete_id:
                 st.error("Lütfen silinecek ID girin.")
             else:
@@ -1041,12 +1016,12 @@ with st.expander("Kayıt Sil", expanded=st.session_state["delete_expander_open"]
                     st.error(f"Kayıt silinemedi: {e}")
 
 # Güncelle
-with st.expander("Kayıt Güncelle", expanded=st.session_state["update_expander_open"]):
+with st.expander("Kayıt Güncelle"):
     # Tüm tablolar için güncelleme alanı ve butonu görünür olsun
     if table_name == "Assistants":
         assistants = get_assistants()
         users = get_users()
-        user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['id'] for u in users} if users else {}
+        user_options = {f"{u['user_id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['user_id'] for u in users} if users else {}
         if assistants:
             assistant_options = {f"{a['asistan_id']} - {a['title']}": a['asistan_id'] for a in assistants}
             selected = st.selectbox("Güncellenecek Asistan", list(assistant_options.keys()), key="update_assistant_select")
@@ -1084,7 +1059,6 @@ with st.expander("Kayıt Güncelle", expanded=st.session_state["update_expander_
             update_data['data_instructions'] = st.text_area("data_instructions", value=assistant_row.get('data_instructions', ''), key="update_data_instructions")
             update_data['file_path'] = st.text_area("file_path", value=assistant_row.get('file_path', ''), key="update_file_path")
         if st.button("Güncelle", key="update_button_assistants"):
-            st.session_state["update_expander_open"] = True
             if assistant_row and (not valid_params or not valid_trigg):
                 st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
             elif assistant_row:
@@ -1111,10 +1085,10 @@ with st.expander("Kayıt Güncelle", expanded=st.session_state["update_expander_
         roles = get_roles()
         if users:
             # Kullanıcıların rol adını bul
-            user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']}) [{next((r['role_name'] for r in roles if r['role_id'] == u['role_id']), '')}]": u['id'] for u in users}
+            user_options = {f"{u['user_id']} - {u['name']} {u['surname']} ({u['e_mail']}) [{next((r['role_name'] for r in roles if r['role_id'] == u['role_id']), '')}]": u['user_id'] for u in users}
             selected = st.selectbox("Güncellenecek Kişi", list(user_options.keys()), key="update_user_select")
             update_id = user_options[selected]
-            user_row = next((u for u in users if u['id'] == update_id), None)
+            user_row = next((u for u in users if u['user_id'] == update_id), None)
         else:
             st.success("Güncellenecek kullanıcı yok.")
             update_id = None
@@ -1134,7 +1108,6 @@ with st.expander("Kayıt Güncelle", expanded=st.session_state["update_expander_
                 st.markdown('<div style="color:red; font-size:12px;">Lütfen geçerli bir e-posta adresi girin (ör: kisi@site.com)</div>', unsafe_allow_html=True)
             update_data['institution_working'] = st.text_input("institution_working", value=user_row.get('institution_working', ''), key="update_institution_working")
         if st.button("Güncelle", key="update_button_users"):
-            st.session_state["update_expander_open"] = True
             email = update_data.get("e_mail", "")
             if not is_valid_email(email):
                 st.error("Lütfen geçerli bir e-posta adresi girin (ör: kisi@site.com)")
@@ -1173,9 +1146,7 @@ with st.expander("Kayıt Güncelle", expanded=st.session_state["update_expander_
         update_data = {}
         if role_row:
             update_data['role_name'] = role_row['role_name']
-            # role_id'yi de ekle
             update_data['role_id'] = update_id
-            # permissions (JSON) alanı
             st.markdown("**permissions (JSON):**")
             permissions_val = pretty_json(role_row.get('permissions'))
             permissions_input = st.text_area("", value=permissions_val, key="update_permissions_json")
@@ -1187,11 +1158,8 @@ with st.expander("Kayıt Güncelle", expanded=st.session_state["update_expander_
             except Exception:
                 update_data['permissions'] = {}
             update_data['admin_or_not'] = st.selectbox("admin_or_not", ["Evet", "Hayır"], index=0 if role_row.get('admin_or_not', False) else 1, key="update_admin_or_not") == "Evet"
-            # permissions alanını güvenli şekilde dict olarak ata
-            # Teşhis için ekrana yazdırılan satırları kaldırdım
             if st.button("Güncelle", key="update_button_roles"):
                 missing_fields = check_required_fields(table_options["Roles"]["fields"], update_data)
-                # Zorunlu alan kontrolü fonksiyonunu kullan
                 if missing_fields:
                     st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
                 elif not valid_permissions:
@@ -1279,7 +1247,6 @@ with st.expander("Kayıt Güncelle", expanded=st.session_state["update_expander_
             if email_error_msg:
                 st.markdown(email_error_msg, unsafe_allow_html=True)
         if st.button("Güncelle", key="update_button_auto_prompt"):
-            st.session_state["update_expander_open"] = True
             if auto_prompt_row and (not valid_trigg or email_warning):
                 st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan ve e-posta adreslerinin geçerli olduğundan emin olun.")
             elif auto_prompt_row:
@@ -1314,7 +1281,7 @@ with st.expander("Kayıt Güncelle", expanded=st.session_state["update_expander_
         users = get_users()
         assistants = get_assistants()
         databases = get_database_info()
-        user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['id'] for u in users} if users else {}
+        user_options = {f"{u['user_id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['user_id'] for u in users} if users else {}
         assistant_options = {f"{a['asistan_id']} - {a['title']}": a['asistan_id'] for a in assistants} if assistants else {}
         database_options = {f"{d['database_id']} - {d['database_name']} ({d['database_ip']}:{d['database_port']})": d['database_id'] for d in databases} if databases else {}
         # Güncelleme formu
@@ -1405,7 +1372,7 @@ with st.expander("Kayıt Güncelle", expanded=st.session_state["update_expander_
             st.error(f"Veri alınırken hata oluştu: {e}")
             dbinfo_entries = []
         users = get_users()
-        user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['id'] for u in users} if users else {}
+        user_options = {f"{u['user_id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['user_id'] for u in users} if users else {}
         if dbinfo_entries:
             dbinfo_options = {f"{dbinfo['database_id']} - {dbinfo['database_name']}": dbinfo['database_id'] for dbinfo in dbinfo_entries}
             selected = st.selectbox("Güncellenecek Database Info", list(dbinfo_options.keys()), key="update_dbinfo_select_5")
@@ -1434,7 +1401,6 @@ with st.expander("Kayıt Güncelle", expanded=st.session_state["update_expander_
             else:
                 update_data['user_id'] = st.text_input("user_id", value=str(dbinfo_row.get('user_id', '')), key="update_dbinfo_user_id_text")
         if st.button("Güncelle", key="update_button_dbinfo"):
-            st.session_state["update_expander_open"] = True
             if dbinfo_row:
                 try:
                     resp = requests.put(f"{backend_url}/{endpoint}/{update_id}", json=update_data)
@@ -1464,7 +1430,7 @@ with st.expander("Kayıt Güncelle", expanded=st.session_state["update_expander_
             st.error(f"Veri alınırken hata oluştu: {e}")
             dbinfo_entries = []
         users = get_users()
-        user_options = {f"{u['id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['id'] for u in users} if users else {}
+        user_options = {f"{u['user_id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['user_id'] for u in users} if users else {}
         if dbinfo_entries:
             dbinfo_options = {f"{dbinfo['database_id']} - {dbinfo['database_name']}": dbinfo['database_id'] for dbinfo in dbinfo_entries}
             selected = st.selectbox("Güncellenecek Database Info", list(dbinfo_options.keys()), key="update_dbinfo_select_6")
@@ -1493,7 +1459,6 @@ with st.expander("Kayıt Güncelle", expanded=st.session_state["update_expander_
             else:
                 update_data['user_id'] = st.text_input("user_id", value=str(dbinfo_row.get('user_id', '')), key="update_dbinfo_user_id_text")
         if st.button("Güncelle", key="update_button_dbinfo"):
-            st.session_state["update_expander_open"] = True
             if dbinfo_row:
                 try:
                     resp = requests.put(f"{backend_url}/{endpoint}/{update_id}", json=update_data)
@@ -1525,12 +1490,14 @@ with st.expander("Kayıt Güncelle", expanded=st.session_state["update_expander_
                 roles = get_roles()
                 role_names = [r['role_name'] for r in roles]
                 add_data['role_name'] = st.selectbox("Rol", role_names, key=f"add_role_{st.session_state['user_add_form_key']}")
+            elif fname == "user_id":
+                add_data[fname] = st.number_input(fname, min_value=1, step=1, format="%d", key=f"add_{fname}_{st.session_state['user_add_form_key']}")
             elif ftype == "bool":
                 add_data[fname] = st.selectbox(fname, ["Evet", "Hayır"], key=f"add_{fname}_{st.session_state['user_add_form_key']}") == "Evet"
             elif ftype == "json":
                 add_data[fname] = st.text_area(fname + " (JSON)", value="{}", key=f"add_{fname}_{st.session_state['user_add_form_key']}")
             elif ftype == "number":
-                if not (table_name == "Users" and fname == "role_id"):
+                if not (table_name == "Users" and fname == "role_id") and fname != "user_id":
                     add_data[fname] = st.number_input(fname, step=1, format="%d", key=f"add_{fname}_{st.session_state['user_add_form_key']}")
             else:
                 max_chars = 100 if fname in ["name", "surname"] else None
@@ -1555,6 +1522,8 @@ with st.expander("Kayıt Güncelle", expanded=st.session_state["update_expander_
                 email = add_data.get("e_mail", "")
                 if not is_valid_email(email):
                     st.error("Lütfen geçerli bir e-posta adresi girin (ör: kisi@site.com)")
+                elif not add_data.get("user_id") or add_data.get("user_id") == 0:
+                    st.error("user_id alanı zorunludur ve 0 olamaz!")
                 else:
                     try:
                         resp = requests.post(f"{backend_url}/{endpoint}", json=add_data)

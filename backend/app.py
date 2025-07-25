@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 import pandas as pd
 import os
+
 def prepare(df):
     df['total'] = df['price'] * df['quantity']
     return df
@@ -36,83 +37,67 @@ def get_db_connection():
 # 1. Roles CRUD
 @app.route('/roles', methods=['GET'])
 def get_roles():
+    
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute('SELECT * FROM "Roles"')
-    roles = cur.fetchall()
+    cur.execute('SELECT * FROM llm_platform.roles')
+    roles = cur.fetchall() 
     cur.close()
     conn.close()
     return jsonify(roles)
 
 @app.route('/roles', methods=['POST'])
 def add_role():
-    data = request.get_json(force=True) or {}
+    data = request.get_json()
     conn = get_db_connection()
     cur = conn.cursor()
-    permissions = data.get('permissions')
-    if isinstance(permissions, dict):
-        permissions = json.dumps(permissions)
     try:
         cur.execute(
-            'INSERT INTO "Roles" (role_id, role_name, permissions, admin_or_not) VALUES (%s, %s, %s, %s)',
-            (
-                data.get('role_id'),
-                data.get('role_name'),
-                permissions,
-                data.get('admin_or_not')
-            )
+            'INSERT INTO llm_platform.roles (role_id, role_name, permissions, admin_or_not) VALUES (%s, %s, %s, %s)',
+            (data['role_id'], data['role_name'], json.dumps(data['permissions']), data['admin_or_not'])
         )
         conn.commit()
-        cur.close()
-        conn.close()
-        return jsonify({'status': 'success'})
+        return jsonify({'message': 'Role added successfully'})
     except Exception as e:
         conn.rollback()
+        print("ROLE EKLEME HATASI:", e)
+        if "duplicate key value violates unique constraint" in str(e):
+            return jsonify({'error': 'Bu role_id ile zaten bir kayıt var.'}), 400
+        return jsonify({'error': str(e)}), 400
+    finally:
         cur.close()
         conn.close()
-        import psycopg2
-        if isinstance(e, psycopg2.errors.UniqueViolation):
-            return jsonify({'error': 'Bu role_id zaten mevcut'}), 400
-        return jsonify({'error': str(e)}), 400
 
 @app.route('/roles/<int:role_id>', methods=['DELETE'])
 def delete_role(role_id):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('DELETE FROM "Roles" WHERE role_id = %s', (role_id,))
+    cur.execute('DELETE FROM llm_platform.roles WHERE role_id = %s', (role_id,))
     conn.commit()
     cur.close()
     conn.close()
-    return jsonify({'status': 'deleted'})
+    return jsonify({'message': 'Role deleted successfully'})
 
 @app.route('/roles/<int:role_id>', methods=['PUT'])
 def update_role(role_id):
-    data = request.get_json(force=True) or {}
+    data = request.get_json()
     conn = get_db_connection()
     cur = conn.cursor()
-    permissions = data.get('permissions')
-    if isinstance(permissions, dict):
-        permissions = json.dumps(permissions)
     cur.execute(
-        'UPDATE "Roles" SET role_name=%s, permissions=%s, admin_or_not=%s WHERE role_id=%s',
-        (
-            data.get('role_name'),
-            permissions,
-            data.get('admin_or_not'),
-            role_id
-        )
+        'UPDATE llm_platform.roles SET role_name=%s, permissions=%s, admin_or_not=%s WHERE role_id=%s',
+        (data['role_name'], json.dumps(data['permissions']), data['admin_or_not'], role_id)
     )
     conn.commit()
     cur.close()
     conn.close()
-    return jsonify({'status': 'updated'})
+    return jsonify({'message': 'Role updated successfully'})
 
 # 2. Users CRUD
 @app.route('/users', methods=['GET'])
 def get_users():
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute('SELECT * FROM "Users"')
+    cur.execute('SELECT * FROM llm_platform."Users"')
     users = cur.fetchall()
     cur.close()
     conn.close()
@@ -123,7 +108,7 @@ def add_user():
     data = request.get_json(force=True) or {}
     conn = get_db_connection()
     cur = conn.cursor()
-    fields = ['role_id', 'name', 'surname', 'password', 'e_mail', 'institution_working']
+    fields = ['user_id', 'role_id', 'name', 'surname', 'password', 'e_mail', 'institution_working']
     values = [data.get(f) for f in fields]
     sql_fields = ', '.join(fields)
     sql_placeholders = ', '.join(['%s'] * len(fields))
@@ -136,7 +121,7 @@ def add_user():
         sql_placeholders += ', %s'
         values.append(data.get('change_date'))
     try:
-        cur.execute(f'INSERT INTO "Users" ({sql_fields}) VALUES ({sql_placeholders})', values)
+        cur.execute(f'INSERT INTO llm_platform."Users" ({sql_fields}) VALUES ({sql_placeholders})', values)
         conn.commit()
         cur.close()
         conn.close()
@@ -153,7 +138,7 @@ def add_user():
 def delete_user(user_id):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('DELETE FROM "Users" WHERE id = %s', (user_id,))
+    cur.execute('DELETE FROM llm_platform."Users" WHERE user_id = %s', (user_id,))
     conn.commit()
     cur.close()
     conn.close()
@@ -165,7 +150,7 @@ def update_user(user_id):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
-        'UPDATE "Users" SET role_id=%s, name=%s, surname=%s, password=%s, e_mail=%s, institution_working=%s, status=%s, change_date=%s, last_login=%s WHERE id=%s',
+        'UPDATE llm_platform."Users" SET role_id=%s, name=%s, surname=%s, password=%s, e_mail=%s, institution_working=%s, status=%s, change_date=%s, last_login=%s WHERE user_id=%s',
         (
             data.get('role_id'),
             data.get('name'),
@@ -190,7 +175,7 @@ def get_database_info():
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute('SELECT * FROM database_info')
+        cur.execute('SELECT * FROM llm_platform.database_info')
         records = cur.fetchall()
         cur.close()
         conn.close()
@@ -217,7 +202,7 @@ def add_database_info():
         sql_fields += ', change_date'
         sql_placeholders += ', %s'
         values.append(data.get('change_date'))
-    cur.execute(f'INSERT INTO database_info ({sql_fields}) VALUES ({sql_placeholders})', values)
+    cur.execute(f'INSERT INTO llm_platform.database_info ({sql_fields}) VALUES ({sql_placeholders})', values)
     conn.commit()
     cur.close()
     conn.close()
@@ -227,7 +212,7 @@ def add_database_info():
 def delete_database_info(database_id):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('DELETE FROM database_info WHERE database_id = %s', (database_id,))
+    cur.execute('DELETE FROM llm_platform.database_info WHERE database_id = %s', (database_id,))
     conn.commit()
     cur.close()
     conn.close()
@@ -239,7 +224,7 @@ def update_database_info(database_id):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
-        'UPDATE database_info SET database_ip=%s, database_port=%s, database_user=%s, database_password=%s, database_type=%s, database_name=%s, user_id=%s WHERE database_id=%s',
+        'UPDATE llm_platform.database_info SET database_ip=%s, database_port=%s, database_user=%s, database_password=%s, database_type=%s, database_name=%s, user_id=%s WHERE database_id=%s',
         (
             data.get('database_ip'),
             data.get('database_port'),
@@ -262,7 +247,7 @@ def get_data_prepare_modules():
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute('SELECT * FROM data_prepare_modules')
+        cur.execute('SELECT * FROM llm_platform.data_prepare_modules')
         records = cur.fetchall()
         cur.close()
         conn.close()
@@ -285,7 +270,7 @@ def add_data_prepare_module():
     values = [data.get(f) for f in fields]
     sql_fields = ', '.join(fields)
     sql_placeholders = ', '.join(['%s'] * len(fields))
-    cur.execute(f'INSERT INTO data_prepare_modules ({sql_fields}) VALUES ({sql_placeholders})', values)
+    cur.execute(f'INSERT INTO llm_platform.data_prepare_modules ({sql_fields}) VALUES ({sql_placeholders})', values)
     conn.commit()
     cur.close()
     conn.close()
@@ -295,7 +280,7 @@ def add_data_prepare_module():
 def delete_data_prepare_module(module_id):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('DELETE FROM data_prepare_modules WHERE module_id = %s', (module_id,))
+    cur.execute('DELETE FROM llm_platform.data_prepare_modules WHERE module_id = %s', (module_id,))
     conn.commit()
     cur.close()
     conn.close()
@@ -314,7 +299,7 @@ def update_data_prepare_module(module_id):
     set_clause = ', '.join([f"{f}=%s" for f in fields])
     values = [data.get(f) for f in fields]
     values.append(module_id)
-    cur.execute(f'UPDATE data_prepare_modules SET {set_clause} WHERE module_id=%s', values)
+    cur.execute(f'UPDATE llm_platform.data_prepare_modules SET {set_clause} WHERE module_id=%s', values)
     conn.commit()
     cur.close()
     conn.close()
@@ -325,7 +310,7 @@ def update_data_prepare_module(module_id):
 def get_assistants():
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute('SELECT * FROM assistants')
+    cur.execute('SELECT * FROM llm_platform.assistants')
     records = cur.fetchall()
     cur.close()
     conn.close()
@@ -367,7 +352,7 @@ def add_assistant():
         sql_fields += ', change_date'
         sql_placeholders += ', %s'
         values.append(data.get('change_date'))
-    cur.execute(f'INSERT INTO assistants ({sql_fields}) VALUES ({sql_placeholders})', values)
+    cur.execute(f'INSERT INTO llm_platform.assistants ({sql_fields}) VALUES ({sql_placeholders})', values)
     conn.commit()
     cur.close()
     conn.close()
@@ -377,7 +362,7 @@ def add_assistant():
 def delete_assistant(asistan_id):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('DELETE FROM assistants WHERE asistan_id = %s', (asistan_id,))
+    cur.execute('DELETE FROM llm_platform.assistants WHERE asistan_id = %s', (asistan_id,))
     conn.commit()
     cur.close()
     conn.close()
@@ -415,7 +400,7 @@ def update_assistant(asistan_id):
     if not isinstance(file_path, str):
         file_path = json.dumps(file_path)
     cur.execute(
-        'UPDATE assistants SET title=%s, explanation=%s, parameters=%s, user_id=%s, create_date=%s, change_date=%s, working_place=%s, default_instructions=%s, data_instructions=%s, file_path=%s, trigger_time=%s WHERE asistan_id=%s',
+        'UPDATE llm_platform.assistants SET title=%s, explanation=%s, parameters=%s, user_id=%s, create_date=%s, change_date=%s, working_place=%s, default_instructions=%s, data_instructions=%s, file_path=%s, trigger_time=%s WHERE asistan_id=%s',
         (
             data.get('title'),
             data.get('explanation'),
@@ -445,8 +430,8 @@ def get_auto_prompt():
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute('''
             SELECT ap.*, a.title as assistant_title
-            FROM auto_prompt ap
-            LEFT JOIN assistants a ON ap.assistant_id = a.asistan_id
+            FROM llm_platform.auto_prompt ap
+            LEFT JOIN llm_platform.assistants a ON ap.assistant_id = a.asistan_id
         ''')
         records = cur.fetchall()
         cur.close()
@@ -468,7 +453,7 @@ def add_auto_prompt():
         trigger_time = json.dumps(trigger_time)
     # assistant_title zorunlu değil, sadece assistant_id ile insert yap
     cur.execute(
-        'INSERT INTO auto_prompt (assistant_id, question, trigger_time, python_code, mcrisactive, receiver_emails) VALUES (%s, %s, %s, %s, %s, %s)',
+        'INSERT INTO llm_platform.auto_prompt (assistant_id, question, trigger_time, python_code, mcrisactive, receiver_emails) VALUES (%s, %s, %s, %s, %s, %s)',
         (
             data.get('assistant_id'),
             data.get('question'),
@@ -487,7 +472,7 @@ def add_auto_prompt():
 def delete_auto_prompt(prompt_id):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('DELETE FROM auto_prompt WHERE prompt_id = %s', (prompt_id,))
+    cur.execute('DELETE FROM llm_platform.auto_prompt WHERE prompt_id = %s', (prompt_id,))
     conn.commit()
     cur.close()
     conn.close()
@@ -502,7 +487,7 @@ def update_auto_prompt(prompt_id):
     if isinstance(trigger_time, dict):
         trigger_time = json.dumps(trigger_time)
     cur.execute(
-        'UPDATE auto_prompt SET prompt_text=%s, assistants_id=%s, trigger_time=%s, mcrisactive=%s WHERE prompt_id=%s',
+        'UPDATE llm_platform.auto_prompt SET prompt_text=%s, assistants_id=%s, trigger_time=%s, mcrisactive=%s WHERE prompt_id=%s',
         (
             data.get('prompt_text'),
             data.get('assistants_id'),
@@ -525,13 +510,13 @@ def login():
         return jsonify({'error': 'E-posta ve şifre gerekli'}), 400
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute('SELECT * FROM "Users" WHERE e_mail = %s AND password = %s', (email, password))
+    cur.execute('SELECT * FROM llm_platform.users WHERE e_mail = %s AND password = %s', (email, password))
     user = cur.fetchone()
     if user:
-        cur.execute('UPDATE "Users" SET last_login = CURRENT_TIMESTAMP WHERE id = %s', (user['id'],))
+        cur.execute('UPDATE llm_platform.users SET last_login = CURRENT_TIMESTAMP WHERE user_id = %s', (user['user_id'],))
         conn.commit()
         # Kullanıcıyı tekrar çek, güncel last_login ile
-        cur.execute('SELECT * FROM "Users" WHERE id = %s', (user['id'],))
+        cur.execute('SELECT * FROM llm_platform.users WHERE user_id = %s', (user['user_id'],))
         user = cur.fetchone()
         cur.close()
         conn.close()

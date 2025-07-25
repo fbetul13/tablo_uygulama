@@ -1,12 +1,12 @@
-CREATE TABLE Roles (
-    role_id SERIAL PRIMARY KEY,
+CREATE TABLE llm_platform.roles (
+    role_id INTEGER PRIMARY KEY,
     role_name VARCHAR(100) NOT NULL,
     permissions TEXT,
     admin_or_not BOOLEAN DEFAULT FALSE
 );
 
-CREATE TABLE Users (
-    id SERIAL PRIMARY KEY,
+CREATE TABLE llm_platform.users (
+    user_id INTEGER PRIMARY KEY,
     role_id INTEGER REFERENCES Roles(role_id),
     name VARCHAR(100),
     surname VARCHAR(100),
@@ -19,12 +19,12 @@ CREATE TABLE Users (
     last_login TIMESTAMP
 );
 
-CREATE TABLE assistants (
+CREATE TABLE llm_platform.assistants (
     asistan_id SERIAL PRIMARY KEY,
     title VARCHAR(255),
     explanation TEXT,
     parameters JSONB,
-    user_id INTEGER REFERENCES Users(id),
+    user_id INTEGER REFERENCES Users(user_id),
     create_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     change_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     working_place VARCHAR(255),
@@ -34,7 +34,7 @@ CREATE TABLE assistants (
     trigger_time JSONB
 );
 
-CREATE TABLE database_info (
+CREATE TABLE llm_platform.database_info (
     database_id SERIAL PRIMARY KEY,
     database_ip VARCHAR(100),
     database_port INTEGER,
@@ -42,10 +42,10 @@ CREATE TABLE database_info (
     database_password VARCHAR(100),
     database_type VARCHAR(50),
     database_name VARCHAR(100),
-    user_id INTEGER REFERENCES Users(id)
+    user_id INTEGER REFERENCES Users(user_id)
 );
 
-CREATE TABLE auto_prompt (
+CREATE TABLE llm_platform.auto_prompt (
     prompt_id SERIAL PRIMARY KEY,
     asistan_id INTEGER REFERENCES assistants(asistan_id),
     question TEXT,
@@ -55,9 +55,9 @@ CREATE TABLE auto_prompt (
     receiver_emails TEXT
 );
 
-CREATE TABLE data_prepare_modules (
-    module_id SERIAL PRIMARY KEY,  
-    user_id INTEGER REFERENCES Users(id),
+CREATE TABLE llm_platform.data_prepare_modules (
+    module_id INTEGER PRIMARY KEY,  
+    user_id INTEGER REFERENCES Users(user_id),
     asistan_id INTEGER REFERENCES assistants(asistan_id),
     query TEXT,
     create_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
