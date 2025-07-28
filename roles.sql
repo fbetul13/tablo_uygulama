@@ -1,1 +1,0 @@
-INSERT INTO llm_platform.roles (role_id, role_name, permissions, admin_or_not) VALUES (1, 'admin', 'all', TRUE);
