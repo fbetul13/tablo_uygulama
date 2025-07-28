@@ -1,3 +1,4 @@
 docker-compose.yml
 *.sql
 data_prepare_modules.csv/*.sql
+assistants_10sütun.csv
