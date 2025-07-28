@@ -1135,7 +1135,7 @@ with st.expander("Kayıt Güncelle"):
         roles = get_roles()
         if roles:
             role_options = {f"{r['role_id']} - {r['role_name']}": r['role_id'] for r in roles}
-            selected = st.selectbox("Güncellenecek Rol", list(role_options.keys()), key="update_role_select")
+            selected = st.selectbox("Güncellenecek ID (role_id)", list(role_options.keys()), key="update_role_select")
             update_id = role_options[selected]
             role_row = next((r for r in roles if r['role_id'] == update_id), None)
             if "roles_update_error" in st.session_state:
@@ -1145,7 +1145,8 @@ with st.expander("Kayıt Güncelle"):
             role_row = None
         update_data = {}
         if role_row:
-            update_data['role_name'] = role_row['role_name']
+            # Yeni: Rol adı güncelleme kutucuğu
+            update_data['role_name'] = st.text_input("role_name", value=role_row['role_name'], key="update_role_name_input")
             update_data['role_id'] = update_id
             st.markdown("**permissions (JSON):**")
             permissions_val = pretty_json(role_row.get('permissions'))
@@ -1160,7 +1161,6 @@ with st.expander("Kayıt Güncelle"):
             update_data['admin_or_not'] = st.selectbox("admin_or_not", ["Evet", "Hayır"], index=0 if role_row.get('admin_or_not', False) else 1, key="update_admin_or_not") == "Evet"
             if st.button("Güncelle", key="update_button_roles"):
                 missing_fields = check_required_fields(table_options["Roles"]["fields"], update_data)
-                # Zorunlu alan kontrolü fonksiyonunu kullan
                 if missing_fields:
                     st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
                 elif not valid_permissions:
