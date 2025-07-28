@@ -7,7 +7,7 @@ import time
 
 table_options = {
     "Roles": {
-        "endpoint": "Roles",
+        "endpoint": "roles",
         "fields": [
             {"name": "role_id", "type": "number"},
             {"name": "role_name", "type": "text"},
@@ -16,7 +16,7 @@ table_options = {
         ]
     },
     "Users": {
-        "endpoint": "Users",
+        "endpoint": "users",
         "fields": [
             {"name": "user_id", "type": "number"},
             {"name": "role_id", "type": "number"},
@@ -28,7 +28,7 @@ table_options = {
         ]
     },
     "Database_Info": {
-        "endpoint": "Database_Info",
+        "endpoint": "database_info",
         "fields": [
             {"name": "database_ip", "type": "text"},
             {"name": "database_port", "type": "text"},
@@ -40,7 +40,7 @@ table_options = {
         ]
     },
     "Data_Prepare_Modules": {
-        "endpoint": "Data_Prepare_Modules",
+        "endpoint": "data_prepare_modules",
         "fields": [
             {"name": "module_id", "type": "number"},
             {"name": "module_name", "type": "text"},
@@ -59,7 +59,7 @@ table_options = {
         ]
     },
     "Assistants": {
-        "endpoint": "Assistants",
+        "endpoint": "assistants",
         "fields": [
             {"name": "title", "type": "text"},
             {"name": "explanation", "type": "text"},
@@ -73,7 +73,7 @@ table_options = {
         ]
     },
     "Auto_Prompt": {
-        "endpoint": "Auto_Prompt",
+        "endpoint": "auto_prompt",
         "fields": [
             {"name": "question", "type": "text"},
             {"name": "assistant_title", "type": "text"},
@@ -86,7 +86,7 @@ table_options = {
 }
 
 # Streamlit frontend'de backend'e istek atmak için:
-backend_url = "http://tablo_uygulama-backend-1:8000"
+backend_url = "http://tablo_uygulama-backend-1:8000" 
 
 # --- BAŞARI MESAJI BLOĞU ---
 if "success_message" in st.session_state:
@@ -608,29 +608,29 @@ with st.expander("Yeni Kayıt Ekle"):
         working_platform = form.text_area("working_platform", max_chars=100)
         db_schema = form.text_area("db_schema")
         documents_id = form.text_input("documents_id")
+        documents_id_invalid = documents_id and not documents_id.isdigit()
+        if documents_id_invalid:
+            form.markdown('<div style="color:red; font-size:12px;">Lütfen sadece sayı giriniz (ör: 1234)</div>', unsafe_allow_html=True)
         csv_db_schema = form.text_area("csv_db_schema")
         data_prep_code = form.text_area("data_prep_code", height=200, max_chars=1000, help="Buraya Python kodunuzu yazabilirsiniz.")
         submitted = form.form_submit_button("Ekle")
         if submitted:
-            if module_id_zero:
-                form.error("Module ID 0 olamaz.")
-            elif (working_platform and len(working_platform) > 100) or (query_name and len(query_name) > 100) or query_invalid or csv_database_id_invalid:
-                if csv_database_id_invalid:
-                    form.error("CSV Database ID alanına sadece sayı giriniz.")
-                pass  # Sadece kutu altında uyarı gösterilecek, kayıt yapılmayacak
+            if csv_database_id_invalid or documents_id_invalid:
+                form.error("Sayı beklenen alanlara sadece rakam giriniz. (Örneğin: documents_id alanına harf girilemez)")
+                st.stop()
             else:
                 try:
                     add_data = {
                         "module_id": module_id,
                         "query": query,
-                        "user_id": user_options[user_id] if user_options else user_id,
-                        "asistan_id": assistant_options[asistan_id] if assistant_options else asistan_id,
-                        "database_id": database_options[database_id] if database_options else database_id,
-                        "csv_database_id": csv_database_id,
+                        "user_id": user_options[user_id] if user_options else int(user_id) if user_id.isdigit() else None,
+                        "asistan_id": assistant_options[asistan_id] if assistant_options else int(asistan_id) if asistan_id.isdigit() else None,
+                        "database_id": database_options[database_id] if database_options else int(database_id) if database_id.isdigit() else None,
+                        "csv_database_id": int(csv_database_id) if csv_database_id.isdigit() else None,
                         "query_name": query_name,
                         "working_platform": working_platform,
                         "db_schema": db_schema,
-                        "documents_id": documents_id,
+                        "documents_id": int(documents_id) if documents_id.isdigit() else None,
                         "csv_db_schema": csv_db_schema,
                         "data_prep_code": data_prep_code
                     }
@@ -1310,29 +1310,29 @@ with st.expander("Kayıt Güncelle"):
         working_platform = form.text_area("working_platform", max_chars=100)
         db_schema = form.text_area("db_schema")
         documents_id = form.text_input("documents_id")
+        documents_id_invalid = documents_id and not documents_id.isdigit()
+        if documents_id_invalid:
+            form.markdown('<div style="color:red; font-size:12px;">Lütfen sadece sayı giriniz (ör: 1234)</div>', unsafe_allow_html=True)
         csv_db_schema = form.text_area("csv_db_schema")
         data_prep_code = form.text_area("data_prep_code", height=200, max_chars=1000, help="Buraya Python kodunuzu yazabilirsiniz.")
         submitted = form.form_submit_button("Ekle")
         if submitted:
-            if module_id_zero:
-                form.error("Module ID 0 olamaz.")
-            elif (working_platform and len(working_platform) > 100) or (query_name and len(query_name) > 100) or query_invalid or csv_database_id_invalid:
-                if csv_database_id_invalid:
-                    form.error("CSV Database ID alanına sadece sayı giriniz.")
-                pass  # Sadece kutu altında uyarı gösterilecek, kayıt yapılmayacak
+            if csv_database_id_invalid or documents_id_invalid:
+                form.error("Sayı beklenen alanlara sadece rakam giriniz. (Örneğin: documents_id alanına harf girilemez)")
+                st.stop()
             else:
                 try:
                     add_data = {
                         "module_id": module_id,
                         "query": query,
-                        "user_id": user_options[user_id] if user_options else user_id,
-                        "asistan_id": assistant_options[asistan_id] if assistant_options else asistan_id,
-                        "database_id": database_options[database_id] if database_options else database_id,
-                        "csv_database_id": csv_database_id,
+                        "user_id": user_options[user_id] if user_options else int(user_id) if user_id.isdigit() else None,
+                        "asistan_id": assistant_options[asistan_id] if assistant_options else int(asistan_id) if asistan_id.isdigit() else None,
+                        "database_id": database_options[database_id] if database_options else int(database_id) if database_id.isdigit() else None,
+                        "csv_database_id": int(csv_database_id) if csv_database_id.isdigit() else None,
                         "query_name": query_name,
                         "working_platform": working_platform,
                         "db_schema": db_schema,
-                        "documents_id": documents_id,
+                        "documents_id": int(documents_id) if documents_id.isdigit() else None,
                         "csv_db_schema": csv_db_schema,
                         "data_prep_code": data_prep_code
                     }

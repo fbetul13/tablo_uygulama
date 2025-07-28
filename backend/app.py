@@ -40,7 +40,7 @@ def get_roles():
     
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute('SELECT * FROM Roles')
+    cur.execute('SELECT * FROM roles')
     roles = cur.fetchall()
     cur.close()
     conn.close()
@@ -53,7 +53,7 @@ def add_role():
     cur = conn.cursor()
     try:
         cur.execute(
-            'INSERT INTO Roles (role_id, role_name, permissions, admin_or_not) VALUES (%s, %s, %s, %s)',
+            'INSERT INTO roles (role_id, role_name, permissions, admin_or_not) VALUES (%s, %s, %s, %s)',
             (
                 data.get('role_id'),
                 data.get('role_name'),
@@ -77,7 +77,7 @@ def add_role():
 def delete_role(role_id):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('DELETE FROM Roles WHERE role_id = %s', (role_id,))
+    cur.execute('DELETE FROM roles WHERE role_id = %s', (role_id,))
     conn.commit()
     cur.close()
     conn.close()
@@ -89,7 +89,7 @@ def update_role(role_id):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
-        'UPDATE Roles SET role_name=%s, permissions=%s, admin_or_not=%s WHERE role_id=%s',
+        'UPDATE roles SET role_name=%s, permissions=%s, admin_or_not=%s WHERE role_id=%s',
         (
             data.get('role_name'),
             json.dumps(data.get('permissions')),
@@ -107,7 +107,7 @@ def update_role(role_id):
 def get_users():
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute('SELECT * FROM Users')
+    cur.execute('SELECT * FROM users')
     users = cur.fetchall()
     cur.close()
     conn.close()
@@ -131,7 +131,7 @@ def add_user():
         sql_placeholders += ', %s'
         values.append(data.get('change_date'))
     try:
-        cur.execute(f'INSERT INTO Users ({sql_fields}) VALUES ({sql_placeholders})', values)
+        cur.execute(f'INSERT INTO users ({sql_fields}) VALUES ({sql_placeholders})', values)
         conn.commit()
         cur.close()
         conn.close()
@@ -148,7 +148,7 @@ def add_user():
 def delete_user(user_id):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('DELETE FROM Users WHERE id = %s', (user_id,))
+    cur.execute('DELETE FROM users WHERE user_id = %s', (user_id,))
     conn.commit()
     cur.close()
     conn.close()
@@ -160,7 +160,7 @@ def update_user(user_id):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
-        'UPDATE Users SET role_id=%s, name=%s, surname=%s, password=%s, e_mail=%s, institution_working=%s, status=%s, change_date=%s, last_login=%s WHERE id=%s',
+        'UPDATE users SET role_id=%s, name=%s, surname=%s, password=%s, e_mail=%s, institution_working=%s, status=%s, change_date=%s, last_login=%s WHERE user_id=%s',
         (
             data.get('role_id'),
             data.get('name'),
@@ -537,10 +537,10 @@ def login():
     cur.execute('SELECT * FROM Users WHERE e_mail = %s AND password = %s', (email, password))
     user = cur.fetchone()
     if user:
-        cur.execute('UPDATE Users SET last_login = CURRENT_TIMESTAMP WHERE id = %s', (user['id'],))
+        cur.execute('UPDATE Users SET last_login = CURRENT_TIMESTAMP WHERE user_id = %s', (user['user_id'],))
         conn.commit()
         # Kullanıcıyı tekrar çek, güncel last_login ile
-        cur.execute('SELECT * FROM Users WHERE id = %s', (user['id'],))
+        cur.execute('SELECT * FROM Users WHERE user_id = %s', (user['user_id'],))
         user = cur.fetchone()
         cur.close()
         conn.close()
