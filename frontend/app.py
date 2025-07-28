@@ -99,6 +99,22 @@ if "role_form_key" not in st.session_state:
 if "show_table" not in st.session_state:
     st.session_state["show_table"] = False
 
+# Başlangıçta session state'i kontrol et
+if "form_states" not in st.session_state:
+    st.session_state["form_states"] = {}
+
+# Form durumlarını yönetmek için yardımcı fonksiyon
+def should_rerun(table_name, action):
+    """Sadece gerekli durumlarda rerun yapar"""
+    # Artık kullanılmıyor, direkt st.rerun() kullanıyoruz
+    return False
+
+def mark_form_completed(table_name, action):
+    """Form işlemini tamamlandı olarak işaretler"""
+    if "form_states" not in st.session_state:
+        st.session_state["form_states"] = {}
+    st.session_state["form_states"][f"{table_name}_{action}"] = True
+
 # --- GERİ AL (UNDO) BLOĞU ---
 # table_options değişkeni dosyanın başında tanımlı ve globaldir, burada erişilebilir olmalı
 if "last_deleted" in st.session_state:
@@ -127,9 +143,10 @@ if "last_deleted" in st.session_state:
             except Exception as e:
                 st.error(f"Geri alma başarısız: {e}")
     # 15 saniye geçtiyse uyarıyı kaldır
-    if time.time() - st.session_state["last_deleted_time"] > 15:
+    if "last_deleted_time" in st.session_state and time.time() - st.session_state["last_deleted_time"] > 15:
         del st.session_state["last_deleted"]
         del st.session_state["last_deleted_time"]
+        # 15 saniye sonra otomatik temizlik için rerun yap
         st.rerun()
 
 # Custom CSS for alert boxes (KALDIRILDI)
@@ -214,15 +231,15 @@ def pretty_json(val):
             return val
     return str(val)
 
-def on_table_change():
-    st.session_state['force_rerun'] = True
-
 st.title("Tablo Yönetim Paneli")
 # --- TABLO SEÇİMİ ---
 if 'table_name' in st.session_state and st.session_state['table_name'] in table_options:
     default_index = list(table_options.keys()).index(st.session_state['table_name'])
 else:
     default_index = 0
+
+def on_table_change():
+    st.session_state['table_name'] = st.session_state['sidebar_table_select']
 
 table_name = st.sidebar.selectbox(
     "Tablo Seçin",
@@ -232,10 +249,6 @@ table_name = st.sidebar.selectbox(
     on_change=on_table_change
 )
 st.session_state['table_name'] = table_name
-
-if st.session_state.get('force_rerun', False):
-    st.session_state['force_rerun'] = False
-    st.rerun()
 
 config = table_options[table_name]
 endpoint = config["endpoint"]
@@ -312,8 +325,18 @@ if st.session_state["show_table"]:
     except Exception as e:
         st.error(f"Veri alınamadı: {e}")
 
+# Expander state management
+if "add_expander_open" not in st.session_state:
+    st.session_state["add_expander_open"] = False
+if "delete_expander_open" not in st.session_state:
+    st.session_state["delete_expander_open"] = False
+if "update_expander_open" not in st.session_state:
+    st.session_state["update_expander_open"] = False
+
 # Ekle
-with st.expander("Yeni Kayıt Ekle"):
+if "add_expander_open" not in st.session_state:
+    st.session_state["add_expander_open"] = False
+with st.expander("Yeni Kayıt Ekle", expanded=st.session_state.get("add_expander_open", False)):
     def check_required_fields(field_defs, values_dict):
         missing = []
         for f in field_defs:
@@ -362,6 +385,7 @@ with st.expander("Yeni Kayıt Ekle"):
                         st.session_state["success_message"] = "Kayıt eklendi!"
                         st.session_state["role_form_key"] += 1
                         st.session_state['last_table'] = table_name
+                        st.session_state["add_expander_open"] = True
                         st.rerun()
                     else:
                         try:
@@ -436,7 +460,25 @@ with st.expander("Yeni Kayıt Ekle"):
         form.markdown("**trigger_time(JSON):**")
         col4 = form.columns(1)[0]
         with col4:
-            trigger_time_times = form.text_input("times", max_chars=100, key="add_trigger_time_times")
+            trigger_time_times = form.text_input("times", max_chars=100, key="add_trigger_time_times", help="Örnek: 09:00, 14:00, 18:30")
+        # Zaman formatı kontrolü
+        trigger_time_invalid = False
+        if trigger_time_times:
+            import re
+            # HH:MM formatında zaman kontrolü (virgülle ayrılmış)
+            time_pattern = r'^(\d{1,2}:\d{2})(,\s*\d{1,2}:\d{2})*$'
+            if not re.match(time_pattern, trigger_time_times):
+                form.markdown('<div style="color:red; font-size:12px;">Lütfen geçerli zaman formatı girin (HH:MM, HH:MM, HH:MM)</div>', unsafe_allow_html=True)
+                trigger_time_invalid = True
+            else:
+                # Saat ve dakika kontrolü
+                times = [t.strip() for t in trigger_time_times.split(',')]
+                for time_str in times:
+                    hour, minute = map(int, time_str.split(':'))
+                    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+                        form.markdown('<div style="color:red; font-size:12px;">Saat 0-23, dakika 0-59 arasında olmalıdır</div>', unsafe_allow_html=True)
+                        trigger_time_invalid = True
+                        break
         trigger_time = {
             "times": trigger_time_times
         }
@@ -453,8 +495,8 @@ with st.expander("Yeni Kayıt Ekle"):
         file_path = form.text_area("file_path", max_chars=255)
         submitted = form.form_submit_button("Ekle")
         if submitted:
-            if asistan_id_invalid:
-                form.error(f"Asistan ID: {asistan_id_error_msg}")
+            if asistan_id_invalid or trigger_time_invalid:
+                form.error(f"Asistan ID: {asistan_id_error_msg}" if asistan_id_invalid else "Lütfen geçerli zaman formatı girin.")
             else:
                 try:
                     add_data = {
@@ -474,6 +516,9 @@ with st.expander("Yeni Kayıt Ekle"):
                         st.session_state["success_message"] = "Kayıt eklendi!"
                         st.session_state["assistant_form_key"] = st.session_state.get('assistant_form_key', 0) + 1
                         st.session_state['last_table'] = table_name
+                        st.session_state["add_expander_open"] = True
+                        st.session_state["delete_expander_open"] = False
+                        st.session_state["update_expander_open"] = False
                         st.rerun()
                     else:
                         try:
@@ -516,9 +561,26 @@ with st.expander("Yeni Kayıt Ekle"):
             assistant_id = assistant_options[assistant_display]
         else:
             assistant_id = form.text_input("assistant_id", max_chars=100)
-        form.markdown("**trigger_time:**")
-        trigger_time_times = form.text_input("times", max_chars=100, key="add_trigger_time_times")
-        # --- ZAMAN FORMAT KONTROLÜ --- (iptal edildi)
+        form.markdown("**trigger_time (JSON):**")
+        trigger_time_times = form.text_input("times", max_chars=100, key="add_trigger_time_times", help="Örnek: 09:00, 14:00, 18:30")
+        # Zaman formatı kontrolü
+        trigger_time_invalid = False
+        if trigger_time_times:
+            import re
+            # HH:MM formatında zaman kontrolü (virgülle ayrılmış)
+            time_pattern = r'^(\d{1,2}:\d{2})(,\s*\d{1,2}:\d{2})*$'
+            if not re.match(time_pattern, trigger_time_times):
+                form.markdown('<div style="color:red; font-size:12px;">Lütfen geçerli zaman formatı girin (HH:MM, HH:MM, HH:MM)</div>', unsafe_allow_html=True)
+                trigger_time_invalid = True
+            else:
+                # Saat ve dakika kontrolü
+                times = [t.strip() for t in trigger_time_times.split(',')]
+                for time_str in times:
+                    hour, minute = map(int, time_str.split(':'))
+                    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+                        form.markdown('<div style="color:red; font-size:12px;">Saat 0-23, dakika 0-59 arasında olmalıdır</div>', unsafe_allow_html=True)
+                        trigger_time_invalid = True
+                        break
         trigger_time = {"times": trigger_time_times}
         python_code = form.text_area("python_code", height=200, help="Buraya Python kodunuzu yazabilirsiniz.")
         mcrisactive = form.selectbox("mcrisactive", ["Evet", "Hayır"]) == "Evet"
@@ -533,7 +595,7 @@ with st.expander("Yeni Kayıt Ekle"):
                     break
         submitted = form.form_submit_button("Ekle")
         if submitted:
-            if len(question) > 100 or email_warning:
+            if len(question) > 100 or email_warning or trigger_time_invalid:
                 form.error("Lütfen alanları doğru ve limitlere uygun doldurun.")
             else:
                 try:
@@ -550,6 +612,9 @@ with st.expander("Yeni Kayıt Ekle"):
                         st.session_state["success_message"] = "Kayıt eklendi!"
                         st.session_state["auto_prompt_form_key"] = st.session_state.get('auto_prompt_form_key', 0) + 1
                         st.session_state['last_table'] = table_name
+                        st.session_state["add_expander_open"] = True
+                        st.session_state["delete_expander_open"] = False
+                        st.session_state["update_expander_open"] = False
                         st.rerun()
                     else:
                         try:
@@ -608,15 +673,15 @@ with st.expander("Yeni Kayıt Ekle"):
         working_platform = form.text_area("working_platform", max_chars=100)
         db_schema = form.text_area("db_schema")
         documents_id = form.text_input("documents_id")
-        documents_id_invalid = documents_id and not documents_id.isdigit()
-        if documents_id_invalid:
-            form.markdown('<div style="color:red; font-size:12px;">Lütfen sadece sayı giriniz (ör: 1234)</div>', unsafe_allow_html=True)
         csv_db_schema = form.text_area("csv_db_schema")
         data_prep_code = form.text_area("data_prep_code", height=200, max_chars=1000, help="Buraya Python kodunuzu yazabilirsiniz.")
         submitted = form.form_submit_button("Ekle")
         if submitted:
-            if csv_database_id_invalid or documents_id_invalid:
-                form.error("Sayı beklenen alanlara sadece rakam giriniz. (Örneğin: documents_id alanına harf girilemez)")
+            if module_id_zero:
+                form.error("Module ID 0 olamaz. Lütfen 0'dan farklı bir ID girin.")
+                st.stop()
+            if csv_database_id_invalid:
+                form.error("Sayı beklenen alanlara sadece rakam giriniz.")
                 st.stop()
             else:
                 try:
@@ -630,7 +695,7 @@ with st.expander("Yeni Kayıt Ekle"):
                         "query_name": query_name,
                         "working_platform": working_platform,
                         "db_schema": db_schema,
-                        "documents_id": int(documents_id) if documents_id.isdigit() else None,
+                        "documents_id": documents_id,
                         "csv_db_schema": csv_db_schema,
                         "data_prep_code": data_prep_code
                     }
@@ -639,6 +704,7 @@ with st.expander("Yeni Kayıt Ekle"):
                         st.session_state["success_message"] = "Kayıt eklendi!"
                         st.session_state["dpm_form_key"] = st.session_state.get('dpm_form_key', 0) + 1
                         st.session_state['last_table'] = table_name
+                        st.session_state["add_expander_open"] = True
                         st.rerun()
                     else:
                         try:
@@ -691,7 +757,9 @@ with st.expander("Yeni Kayıt Ekle"):
                     st.session_state["success_message"] = "Kayıt eklendi!"
                     st.session_state["dbinfo_form_key"] = st.session_state.get('dbinfo_form_key', 0) + 1
                     st.session_state['last_table'] = table_name
-                    st.rerun()
+                    mark_form_completed(table_name, "add")
+                    if should_rerun(table_name, "add"):
+                        st.rerun()
                 else:
                     try:
                         error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
@@ -818,7 +886,9 @@ with st.expander("Yeni Kayıt Ekle"):
                     st.error(str(e))
 
 # Sil
-with st.expander("Kayıt Sil"):
+if "delete_expander_open" not in st.session_state:
+    st.session_state["delete_expander_open"] = False
+with st.expander("Kayıt Sil", expanded=st.session_state.get("delete_expander_open", False)):
     # Tüm tablolar için silme alanı ve butonu görünür olsun
     if table_name == "Assistants":
         assistants = get_assistants()
@@ -836,9 +906,11 @@ with st.expander("Kayıt Sil"):
                     deleted_row = next((a for a in assistants if a['asistan_id'] == delete_id), None)
                     resp = requests.delete(f"{backend_url}/assistants/{delete_id}")
                     if resp.status_code == 200:
-                        st.success("Kayıt silindi!")
+                        st.session_state["success_message"] = "Kayıt silindi!"
                         if deleted_row:
                             st.session_state["last_deleted"] = {"table_name": "Assistants", "data": deleted_row}
+                        st.session_state["delete_expander_open"] = True
+                        st.session_state["add_expander_open"] = False
                         st.rerun()
                     else:
                         st.error("Kayıt silinemedi: " + resp.text)
@@ -870,9 +942,11 @@ with st.expander("Kayıt Sil"):
                     deleted_row = next((ap for ap in auto_prompts if ap['prompt_id'] == delete_id), None)
                     resp = requests.delete(f"{backend_url}/auto_prompt/{delete_id}")
                     if resp.status_code == 200:
-                        st.success("Kayıt silindi!")
+                        st.session_state["success_message"] = "Kayıt silindi!"
                         if deleted_row:
                             st.session_state["last_deleted"] = {"table_name": "Auto_Prompt", "data": deleted_row}
+                        st.session_state["delete_expander_open"] = True
+                        st.session_state["add_expander_open"] = False
                         st.rerun()
                     else:
                         st.error("Kayıt silinemedi: " + resp.text)
@@ -904,9 +978,11 @@ with st.expander("Kayıt Sil"):
                     deleted_row = next((dpm for dpm in dpm_modules if dpm['module_id'] == delete_id), None)
                     resp = requests.delete(f"{backend_url}/data_prepare_modules/{delete_id}")
                     if resp.status_code == 200:
-                        st.success("Kayıt silindi!")
+                        st.session_state["success_message"] = "Kayıt silindi!"
                         if deleted_row:
                             st.session_state["last_deleted"] = {"table_name": "Data_Prepare_Modules", "data": deleted_row}
+                        st.session_state["delete_expander_open"] = True
+                        st.session_state["add_expander_open"] = False
                         st.rerun()
                     else:
                         st.error("Kayıt silinemedi: " + resp.text)
@@ -938,9 +1014,11 @@ with st.expander("Kayıt Sil"):
                     deleted_row = next((d for d in dbinfo_entries if d['database_id'] == delete_id), None)
                     resp = requests.delete(f"{backend_url}/database_info/{delete_id}")
                     if resp.status_code == 200:
-                        st.success("Kayıt silindi!")
+                        st.session_state["success_message"] = "Kayıt silindi!"
                         if deleted_row:
                             st.session_state["last_deleted"] = {"table_name": "Database_Info", "data": deleted_row}
+                        st.session_state["delete_expander_open"] = True
+                        st.session_state["add_expander_open"] = False
                         st.rerun()
                     else:
                         st.error("Kayıt silinemedi: " + resp.text)
@@ -965,9 +1043,11 @@ with st.expander("Kayıt Sil"):
                     deleted_row = next((u for u in users if u['user_id'] == delete_id), None)
                     resp = requests.delete(f"{backend_url}/users/{delete_id}")
                     if resp.status_code == 200:
-                        st.success("Kişi silindi!")
+                        st.session_state["success_message"] = "Kayıt silindi!"
                         if deleted_row:
                             st.session_state["last_deleted"] = {"table_name": "Users", "data": deleted_row}
+                        st.session_state["delete_expander_open"] = True
+                        st.session_state["add_expander_open"] = False
                         st.rerun()
                     else:
                         st.error("Kayıt silinemedi: " + resp.text)
@@ -998,9 +1078,11 @@ with st.expander("Kayıt Sil"):
                     deleted_row = next((r for r in roles if r['role_id'] == delete_id), None)
                     resp = requests.delete(f"{backend_url}/roles/{delete_id}")
                     if resp.status_code == 200:
-                        st.markdown('<span style="color:green; font-size:16px;">Kayıt silindi.</span>', unsafe_allow_html=True)
+                        st.session_state["success_message"] = "Kayıt silindi!"
                         if deleted_row:
                             st.session_state["last_deleted"] = {"table_name": "Roles", "data": deleted_row}
+                        st.session_state["delete_expander_open"] = True
+                        st.session_state["add_expander_open"] = False
                         st.rerun()
                     else:
                         # Hata mesajını kullanıcı dostu göster
@@ -1016,7 +1098,9 @@ with st.expander("Kayıt Sil"):
                     st.error(f"Kayıt silinemedi: {e}")
 
 # Güncelle
-with st.expander("Kayıt Güncelle"):
+if "update_expander_open" not in st.session_state:
+    st.session_state["update_expander_open"] = False
+with st.expander("Kayıt Güncelle", expanded=st.session_state.get("update_expander_open", False)):
     # Tüm tablolar için güncelleme alanı ve butonu görünür olsun
     if table_name == "Assistants":
         assistants = get_assistants()
@@ -1069,6 +1153,9 @@ with st.expander("Kayıt Güncelle"):
                     if resp.status_code == 200:
                         st.session_state["success_message"] = "Kayıt güncellendi!"
                         st.session_state["show_table"] = True
+                        st.session_state["update_expander_open"] = True
+                        st.session_state["add_expander_open"] = False
+                        st.session_state["delete_expander_open"] = False
                         st.rerun()
                     else:
                         error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
@@ -1257,6 +1344,9 @@ with st.expander("Kayıt Güncelle"):
                     if resp.status_code == 200:
                         st.session_state["success_message"] = "Kayıt güncellendi!"
                         st.session_state["show_table"] = True
+                        st.session_state["update_expander_open"] = True
+                        st.session_state["add_expander_open"] = False
+                        st.session_state["delete_expander_open"] = False
                         st.rerun()
                     else:
                         error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
@@ -1317,6 +1407,9 @@ with st.expander("Kayıt Güncelle"):
         data_prep_code = form.text_area("data_prep_code", height=200, max_chars=1000, help="Buraya Python kodunuzu yazabilirsiniz.")
         submitted = form.form_submit_button("Ekle")
         if submitted:
+            if module_id_zero:
+                form.error("Module ID 0 olamaz. Lütfen 0'dan farklı bir ID girin.")
+                st.stop()
             if csv_database_id_invalid or documents_id_invalid:
                 form.error("Sayı beklenen alanlara sadece rakam giriniz. (Örneğin: documents_id alanına harf girilemez)")
                 st.stop()
@@ -1341,6 +1434,7 @@ with st.expander("Kayıt Güncelle"):
                         st.session_state["success_message"] = "Kayıt eklendi!"
                         st.session_state["dpm_form_key"] = st.session_state.get('dpm_form_key', 0) + 1
                         st.session_state['last_table'] = table_name
+                        st.session_state["add_expander_open"] = True
                         st.rerun()
                     else:
                         try:
