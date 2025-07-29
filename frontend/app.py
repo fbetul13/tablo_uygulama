@@ -705,6 +705,8 @@ with st.expander("Yeni Kayıt Ekle", expanded=st.session_state.get("add_expander
                         st.session_state["dpm_form_key"] = st.session_state.get('dpm_form_key', 0) + 1
                         st.session_state['last_table'] = table_name
                         st.session_state["add_expander_open"] = True
+                        st.session_state["delete_expander_open"] = False
+                        st.session_state["update_expander_open"] = False
                         st.rerun()
                     else:
                         try:
@@ -911,9 +913,17 @@ with st.expander("Kayıt Sil", expanded=st.session_state.get("delete_expander_op
                             st.session_state["last_deleted"] = {"table_name": "Assistants", "data": deleted_row}
                         st.session_state["delete_expander_open"] = True
                         st.session_state["add_expander_open"] = False
+                        st.session_state["update_expander_open"] = False
                         st.rerun()
                     else:
-                        st.error("Kayıt silinemedi: " + resp.text)
+                        error_text = resp.text
+                        if (
+                            'foreign key constraint' in error_text.lower() or
+                            'is still referenced' in error_text.lower()
+                        ):
+                            st.error('Bu asistanı silmeden önce, bu asistana bağlı auto prompt ve veri hazırlama modüllerini silmelisiniz.')
+                        else:
+                            st.error("Kayıt silinemedi: " + error_text)
                 except Exception as e:
                     st.error(f"Kayıt silinemedi: {e}")
             else:
@@ -947,9 +957,17 @@ with st.expander("Kayıt Sil", expanded=st.session_state.get("delete_expander_op
                             st.session_state["last_deleted"] = {"table_name": "Auto_Prompt", "data": deleted_row}
                         st.session_state["delete_expander_open"] = True
                         st.session_state["add_expander_open"] = False
+                        st.session_state["update_expander_open"] = False
                         st.rerun()
                     else:
-                        st.error("Kayıt silinemedi: " + resp.text)
+                        error_text = resp.text
+                        if (
+                            'foreign key constraint' in error_text.lower() or
+                            'is still referenced' in error_text.lower()
+                        ):
+                            st.error('Bu auto promptu silmeden önce, bu prompta bağlı asistanı silmelisiniz.')
+                        else:
+                            st.error("Kayıt silinemedi: " + error_text)
                 except Exception as e:
                     st.error(f"Kayıt silinemedi: {e}")
             else:
@@ -983,9 +1001,17 @@ with st.expander("Kayıt Sil", expanded=st.session_state.get("delete_expander_op
                             st.session_state["last_deleted"] = {"table_name": "Data_Prepare_Modules", "data": deleted_row}
                         st.session_state["delete_expander_open"] = True
                         st.session_state["add_expander_open"] = False
+                        st.session_state["update_expander_open"] = False
                         st.rerun()
                     else:
-                        st.error("Kayıt silinemedi: " + resp.text)
+                        error_text = resp.text
+                        if (
+                            'foreign key constraint' in error_text.lower() or
+                            'is still referenced' in error_text.lower()
+                        ):
+                            st.error('Bu modülü silmeden önce, bu modüle bağlı tüm asistanları ve kullanıcıları silmelisiniz.')
+                        else:
+                            st.error("Kayıt silinemedi: " + error_text)
                 except Exception as e:
                     st.error(f"Kayıt silinemedi: {e}")
             else:
@@ -1002,7 +1028,7 @@ with st.expander("Kayıt Sil", expanded=st.session_state.get("delete_expander_op
             st.error(f"Veri alınırken hata oluştu: {e}")
             dbinfo_entries = []
         if dbinfo_entries:
-            dbinfo_options = {f"{dbinfo['database_id']} - {dbinfo['database_name']}": dbinfo['database_id'] for dbinfo in dbinfo_entries}
+            dbinfo_options = {f"{db['database_id']} - {db['database_name']}": db['database_id'] for db in dbinfo_entries}
             selected = st.selectbox("Silinecek Database Info", list(dbinfo_options.keys()), key="delete_dbinfo_select")
             delete_id = dbinfo_options[selected]
         else:
@@ -1011,7 +1037,7 @@ with st.expander("Kayıt Sil", expanded=st.session_state.get("delete_expander_op
         if st.button("Sil", key="delete_button_dbinfo"):
             if delete_id:
                 try:
-                    deleted_row = next((d for d in dbinfo_entries if d['database_id'] == delete_id), None)
+                    deleted_row = next((db for db in dbinfo_entries if db['database_id'] == delete_id), None)
                     resp = requests.delete(f"{backend_url}/database_info/{delete_id}")
                     if resp.status_code == 200:
                         st.session_state["success_message"] = "Kayıt silindi!"
@@ -1019,9 +1045,17 @@ with st.expander("Kayıt Sil", expanded=st.session_state.get("delete_expander_op
                             st.session_state["last_deleted"] = {"table_name": "Database_Info", "data": deleted_row}
                         st.session_state["delete_expander_open"] = True
                         st.session_state["add_expander_open"] = False
+                        st.session_state["update_expander_open"] = False
                         st.rerun()
                     else:
-                        st.error("Kayıt silinemedi: " + resp.text)
+                        error_text = resp.text
+                        if (
+                            'foreign key constraint' in error_text.lower() or
+                            'is still referenced' in error_text.lower()
+                        ):
+                            st.error('Bu veritabanı bilgisini silmeden önce, bu kayda bağlı kullanıcıyı silmelisiniz.')
+                        else:
+                            st.error("Kayıt silinemedi: " + error_text)
                 except Exception as e:
                     st.error(f"Kayıt silinemedi: {e}")
             else:
@@ -1048,9 +1082,18 @@ with st.expander("Kayıt Sil", expanded=st.session_state.get("delete_expander_op
                             st.session_state["last_deleted"] = {"table_name": "Users", "data": deleted_row}
                         st.session_state["delete_expander_open"] = True
                         st.session_state["add_expander_open"] = False
+                        st.session_state["update_expander_open"] = False
                         st.rerun()
                     else:
-                        st.error("Kayıt silinemedi: " + resp.text)
+                        # Hata mesajını kullanıcı dostu göster
+                        error_text = resp.text
+                        if (
+                            'foreign key constraint' in error_text.lower() or
+                            'is still referenced' in error_text.lower()
+                        ):
+                            st.error('Bu kullanıcıyı silmeden önce, bu kullanıcıya bağlı tüm asistanları, veritabanı bilgilerini, otomatik promptları ve veri hazırlama modüllerini silmelisiniz.')
+                        else:
+                            st.error("Kayıt silinemedi: " + error_text)
                 except Exception as e:
                     st.error(f"Kayıt silinemedi: {e}")
             else:
@@ -1083,6 +1126,7 @@ with st.expander("Kayıt Sil", expanded=st.session_state.get("delete_expander_op
                             st.session_state["last_deleted"] = {"table_name": "Roles", "data": deleted_row}
                         st.session_state["delete_expander_open"] = True
                         st.session_state["add_expander_open"] = False
+                        st.session_state["update_expander_open"] = False
                         st.rerun()
                     else:
                         # Hata mesajını kullanıcı dostu göster
@@ -1405,7 +1449,7 @@ with st.expander("Kayıt Güncelle", expanded=st.session_state.get("update_expan
             form.markdown('<div style="color:red; font-size:12px;">Lütfen sadece sayı giriniz (ör: 1234)</div>', unsafe_allow_html=True)
         csv_db_schema = form.text_area("csv_db_schema")
         data_prep_code = form.text_area("data_prep_code", height=200, max_chars=1000, help="Buraya Python kodunuzu yazabilirsiniz.")
-        submitted = form.form_submit_button("Ekle")
+        submitted = form.form_submit_button("Güncelle")
         if submitted:
             if module_id_zero:
                 form.error("Module ID 0 olamaz. Lütfen 0'dan farklı bir ID girin.")
@@ -1431,10 +1475,12 @@ with st.expander("Kayıt Güncelle", expanded=st.session_state.get("update_expan
                     }
                     resp = requests.post(f"{backend_url}/data_prepare_modules", json=add_data)
                     if resp.status_code == 200:
-                        st.session_state["success_message"] = "Kayıt eklendi!"
+                        st.session_state["success_message"] = "Kayıt güncellendi!"
                         st.session_state["dpm_form_key"] = st.session_state.get('dpm_form_key', 0) + 1
                         st.session_state['last_table'] = table_name
-                        st.session_state["add_expander_open"] = True
+                        st.session_state["update_expander_open"] = True
+                        st.session_state["add_expander_open"] = False
+                        st.session_state["delete_expander_open"] = False
                         st.rerun()
                     else:
                         try:
