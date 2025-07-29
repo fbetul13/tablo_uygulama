@@ -554,6 +554,187 @@ def login():
 def test():
     return "Backend çalışıyor!"
 
+# Documents CRUD endpoints
+@app.route('/documents', methods=['GET'])
+def get_documents():
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute('SELECT * FROM documents ORDER BY upload_date DESC')
+        records = cur.fetchall()
+        cur.close()
+        conn.close()
+        return jsonify(records)
+    except Exception as e:
+        print("DOCUMENTS GET HATASI:", e)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/documents', methods=['POST'])
+def add_document():
+    data = request.get_json(force=True) or {}
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            'INSERT INTO documents (user_id, asistan_id, file_path, file_type, description) VALUES (%s, %s, %s, %s, %s)',
+            (
+                data.get('user_id'),
+                data.get('asistan_id'),
+                data.get('file_path'),
+                data.get('file_type'),
+                data.get('description')
+            )
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'message': 'Document added successfully'})
+    except Exception as e:
+        conn.rollback()
+        print("DOCUMENT EKLEME HATASI:", e)
+        return jsonify({'error': str(e)}), 400
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route('/documents/<int:document_id>', methods=['DELETE'])
+def delete_document(document_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('DELETE FROM documents WHERE document_id = %s', (document_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'message': 'Document deleted successfully'})
+    except Exception as e:
+        conn.rollback()
+        print("DOCUMENT SILME HATASI:", e)
+        return jsonify({'error': str(e)}), 400
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route('/documents/<int:document_id>', methods=['PUT'])
+def update_document(document_id):
+    data = request.get_json(force=True) or {}
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            'UPDATE documents SET user_id=%s, asistan_id=%s, file_path=%s, file_type=%s, description=%s WHERE document_id=%s',
+            (
+                data.get('user_id'),
+                data.get('asistan_id'),
+                data.get('file_path'),
+                data.get('file_type'),
+                data.get('description'),
+                document_id
+            )
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'message': 'Document updated successfully'})
+    except Exception as e:
+        conn.rollback()
+        print("DOCUMENT GUNCELLEME HATASI:", e)
+        return jsonify({'error': str(e)}), 400
+    finally:
+        cur.close()
+        conn.close()
+
+# Models CRUD endpoints
+@app.route('/models', methods=['GET'])
+def get_models():
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute('SELECT * FROM models ORDER BY model_id')
+        records = cur.fetchall()
+        cur.close()
+        conn.close()
+        return jsonify(records)
+    except Exception as e:
+        print("MODELS GET HATASI:", e)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/models', methods=['POST'])
+def add_model():
+    data = request.get_json(force=True) or {}
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            'INSERT INTO models (model_id, name, provider, model_version, is_active, default_parameters) VALUES (%s, %s, %s, %s, %s, %s)',
+            (
+                data.get('model_id'),
+                data.get('name'),
+                data.get('provider'),
+                data.get('model_version'),
+                data.get('is_active'),
+                json.dumps(data.get('default_parameters')) if data.get('default_parameters') else None
+            )
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'message': 'Model added successfully'})
+    except Exception as e:
+        conn.rollback()
+        print("MODEL EKLEME HATASI:", e)
+        return jsonify({'error': str(e)}), 400
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route('/models/<int:model_id>', methods=['DELETE'])
+def delete_model(model_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('DELETE FROM models WHERE model_id = %s', (model_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'message': 'Model deleted successfully'})
+    except Exception as e:
+        conn.rollback()
+        print("MODEL SILME HATASI:", e)
+        return jsonify({'error': str(e)}), 400
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route('/models/<int:model_id>', methods=['PUT'])
+def update_model(model_id):
+    data = request.get_json(force=True) or {}
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            'UPDATE models SET name=%s, provider=%s, model_version=%s, is_active=%s, default_parameters=%s WHERE model_id=%s',
+            (
+                data.get('name'),
+                data.get('provider'),
+                data.get('model_version'),
+                data.get('is_active'),
+                json.dumps(data.get('default_parameters')) if data.get('default_parameters') else None,
+                model_id
+            )
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'message': 'Model updated successfully'})
+    except Exception as e:
+        conn.rollback()
+        print("MODEL GUNCELLEME HATASI:", e)
+        return jsonify({'error': str(e)}), 400
+    finally:
+        cur.close()
+        conn.close()
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000, debug=True)
 

@@ -82,6 +82,27 @@ table_options = {
             {"name": "mcrisactive", "type": "bool"},
             {"name": "receiver_emails", "type": "text"}
         ]
+    },
+    "Documents": {
+        "endpoint": "documents",
+        "fields": [
+            {"name": "user_id", "type": "number"},
+            {"name": "asistan_id", "type": "number"},
+            {"name": "file_path", "type": "text"},
+            {"name": "file_type", "type": "text"},
+            {"name": "description", "type": "text"}
+        ]
+    },
+    "Models": {
+        "endpoint": "models",
+        "fields": [
+            {"name": "model_id", "type": "number"},
+            {"name": "name", "type": "text"},
+            {"name": "provider", "type": "text"},
+            {"name": "model_version", "type": "text"},
+            {"name": "is_active", "type": "bool"},
+            {"name": "default_parameters", "type": "json"}
+        ]
     }
 }
 
@@ -181,6 +202,24 @@ def get_assistants():
 def get_database_info():
     try:
         resp = requests.get(f"{backend_url}/database_info")
+        if resp.status_code == 200:
+            return resp.json()
+        return []
+    except Exception:
+        return []
+
+def get_documents():
+    try:
+        resp = requests.get(f"{backend_url}/documents")
+        if resp.status_code == 200:
+            return resp.json()
+        return []
+    except Exception:
+        return []
+
+def get_models():
+    try:
+        resp = requests.get(f"{backend_url}/models")
         if resp.status_code == 200:
             return resp.json()
         return []
@@ -313,6 +352,60 @@ if st.session_state["show_table"]:
             elif table_name == "Database_Info":
                 df = pd.DataFrame(data)
                 show_cols = ['database_id', 'database_ip', 'database_port', 'database_user', 'database_password', 'database_type', 'database_name', 'user_id']
+                show_cols = [c for c in show_cols if c in df.columns and c not in ['create_date', 'change_date']]
+                st.dataframe(df[show_cols])
+            elif table_name == "Documents":
+                # Users ve Assistants tablolarından verileri çek
+                try:
+                    users = requests.get(f"{backend_url}/users").json()
+                    assistants = requests.get(f"{backend_url}/assistants").json()
+                except Exception:
+                    users = []
+                    assistants = []
+                
+                # user_id ve asistan_id'lerin yanına isim/başlık ekle
+                for doc in data:
+                    # user_id'nin yanına kullanıcı bilgilerini ekle
+                    user_id = doc.get('user_id')
+                    if user_id:
+                        user = next((u for u in users if u['user_id'] == user_id), None)
+                        if user:
+                            doc['user_display'] = f"{user_id} - {user['name']} {user['surname']} ({user['e_mail']})"
+                        else:
+                            doc['user_display'] = f"{user_id} - Kullanıcı Bulunamadı"
+                    else:
+                        doc['user_display'] = "Belirtilmemiş"
+                    
+                    # asistan_id'nin yanına asistan başlığını ekle
+                    asistan_id = doc.get('asistan_id')
+                    if asistan_id:
+                        assistant = next((a for a in assistants if a['asistan_id'] == asistan_id), None)
+                        if assistant:
+                            doc['assistant_display'] = f"{asistan_id} - {assistant['title']}"
+                        else:
+                            doc['assistant_display'] = f"{asistan_id} - Asistan Bulunamadı"
+                    else:
+                        doc['assistant_display'] = "Belirtilmemiş"
+                
+                df = pd.DataFrame(data)
+                show_cols = ['document_id', 'user_display', 'assistant_display', 'file_path', 'file_type', 'upload_date', 'description']
+                show_cols = [c for c in show_cols if c in df.columns]
+                st.dataframe(df[show_cols])
+            elif table_name == "Models":
+                # JSON alanlarını düzgün göster
+                for row in data:
+                    val = row.get("default_parameters", "")
+                    if isinstance(val, str):
+                        try:
+                            val = json.loads(val)
+                            if isinstance(val, str):
+                                val = json.loads(val)
+                        except Exception:
+                            pass
+                    row["default_parameters"] = json.dumps(val, ensure_ascii=False, indent=2) if val else ""
+                
+                df = pd.DataFrame(data)
+                show_cols = ['model_id', 'name', 'provider', 'model_version', 'is_active', 'default_parameters']
                 show_cols = [c for c in show_cols if c in df.columns and c not in ['create_date', 'change_date']]
                 st.dataframe(df[show_cols])
             else:
@@ -726,6 +819,135 @@ with st.expander("Yeni Kayıt Ekle", expanded=st.session_state.get("add_expander
                             form.error('Geçersiz giriş, lütfen alanları kontrol edin.')
                 except Exception as e:
                     form.error(str(e))
+    elif table_name == "Documents":
+        users = get_users()
+        assistants = get_assistants()
+        user_options = {f"{u['user_id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['user_id'] for u in users} if users else {}
+        assistant_options = {f"{a['asistan_id']} - {a['title']}": a['asistan_id'] for a in assistants} if assistants else {}
+        
+        form = st.form(key=f"document_form_{st.session_state.get('document_form_key', 0)}")
+        
+        # user_id selectbox
+        if user_options:
+            user_display = form.selectbox("user_id (Users tablosundan)", list(user_options.keys()))
+            user_id = user_options[user_display]
+        else:
+            user_id = form.text_input("user_id")
+        
+        # asistan_id selectbox
+        if assistant_options:
+            assistant_display = form.selectbox("asistan_id (Assistants tablosundan)", list(assistant_options.keys()))
+            asistan_id = assistant_options[assistant_display]
+        else:
+            asistan_id = form.text_input("asistan_id")
+        
+        file_path = form.text_input("file_path", max_chars=255)
+        file_type = form.text_input("file_type", max_chars=100)
+        description = form.text_area("description")
+        
+        submitted = form.form_submit_button("Ekle")
+        
+        if submitted:
+            if not file_path:
+                form.error("file_path alanı zorunludur")
+                st.stop()
+            try:
+                add_data = {
+                    "user_id": user_options[user_display] if user_options else int(user_id) if user_id.isdigit() else None,
+                    "asistan_id": assistant_options[assistant_display] if assistant_options else int(asistan_id) if asistan_id.isdigit() else None,
+                    "file_path": file_path,
+                    "file_type": file_type,
+                    "description": description
+                }
+                
+                resp = requests.post(f"{backend_url}/documents", json=add_data)
+                if resp.status_code == 200:
+                    st.session_state["success_message"] = "Kayıt eklendi!"
+                    st.session_state["document_form_key"] = st.session_state.get('document_form_key', 0) + 1
+                    st.session_state['last_table'] = table_name
+                    st.session_state["add_expander_open"] = True
+                    st.session_state["delete_expander_open"] = False
+                    st.session_state["update_expander_open"] = False
+                    st.rerun()
+                else:
+                    try:
+                        error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
+                        if isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype')):
+                            form.error('Geçersiz giriş, lütfen alanları kontrol edin.')
+                        elif isinstance(error_msg, str) and (
+                            'already exists' in error_msg.lower() or
+                            'duplicate' in error_msg.lower() or
+                            'unique constraint' in error_msg.lower() or
+                            'not unique' in error_msg.lower()
+                        ):
+                            form.error('Bu kayıt zaten mevcut.')
+                        else:
+                            form.error(error_msg)
+                    except Exception:
+                        form.error('Geçersiz giriş, lütfen alanları kontrol edin.')
+            except Exception as e:
+                form.error(str(e))
+    elif table_name == "Models":
+        form = st.form(key=f"model_form_{st.session_state.get('model_form_key', 0)}")
+        
+        model_id = form.number_input("model_id", min_value=0, step=1, format="%d")
+        name = form.text_input("name", max_chars=255)
+        provider = form.text_input("provider", max_chars=255, help="Örnek: OpenAI, Anthropic, Custom")
+        model_version = form.text_input("model_version", max_chars=100)
+        is_active = form.selectbox("is_active", ["Evet", "Hayır"]) == "Evet"
+        
+        # default_parameters başlığı ve kutucuk
+        form.markdown("**default_parameters (JSON):**")
+        default_parameters = form.text_area("default_parameters", value="{}", key="add_default_parameters_json")
+        valid_default_parameters, default_parameters_err = validate_json_input(default_parameters)
+        if not valid_default_parameters:
+            form.markdown('<div style="color:red; font-size:12px;">Hatalı JSON formatı. Lütfen geçerli bir JSON girin.<br>Örnek: {"temperature": 0.7, "max_tokens": 1000}</div>', unsafe_allow_html=True)
+        
+        submitted = form.form_submit_button("Ekle")
+        
+        if submitted:
+            if model_id == 0:
+                form.error("Model ID 0 olamaz.")
+            elif not valid_default_parameters:
+                form.error("Lütfen default_parameters alanına geçerli bir JSON girin.")
+            else:
+                try:
+                    add_data = {
+                        "model_id": model_id,
+                        "name": name,
+                        "provider": provider,
+                        "model_version": model_version,
+                        "is_active": is_active,
+                        "default_parameters": json.loads(default_parameters) if default_parameters else {}
+                    }
+                    
+                    resp = requests.post(f"{backend_url}/models", json=add_data)
+                    if resp.status_code == 200:
+                        st.session_state["success_message"] = "Kayıt eklendi!"
+                        st.session_state["model_form_key"] = st.session_state.get('model_form_key', 0) + 1
+                        st.session_state['last_table'] = table_name
+                        st.session_state["add_expander_open"] = True
+                        st.session_state["delete_expander_open"] = False
+                        st.session_state["update_expander_open"] = False
+                        st.rerun()
+                    else:
+                        try:
+                            error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
+                            if isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype')):
+                                form.error('Geçersiz giriş, lütfen alanları kontrol edin.')
+                            elif isinstance(error_msg, str) and (
+                                'already exists' in error_msg.lower() or
+                                'duplicate' in error_msg.lower() or
+                                'unique constraint' in error_msg.lower() or
+                                'not unique' in error_msg.lower()
+                            ):
+                                form.error('Bu kayıt zaten mevcut.')
+                            else:
+                                form.error(error_msg)
+                        except Exception:
+                            form.error('Geçersiz giriş, lütfen alanları kontrol edin.')
+                except Exception as e:
+                    form.error(str(e))
     elif table_name == "Database_Info":
         users = get_users()
         user_options = {f"{u['user_id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['user_id'] for u in users} if users else {}
@@ -966,6 +1188,94 @@ with st.expander("Kayıt Sil", expanded=st.session_state.get("delete_expander_op
                             'is still referenced' in error_text.lower()
                         ):
                             st.error('Bu auto promptu silmeden önce, bu prompta bağlı asistanı silmelisiniz.')
+                        else:
+                            st.error("Kayıt silinemedi: " + error_text)
+                except Exception as e:
+                    st.error(f"Kayıt silinemedi: {e}")
+            else:
+                st.error("Lütfen silinecek ID girin.")
+    elif table_name == "Documents":
+        try:
+            response = requests.get(f"{backend_url}/documents")
+            response.raise_for_status()
+            documents = response.json()
+        except requests.exceptions.JSONDecodeError:
+            st.error("Backend'den geçersiz veri geldi (JSONDecodeError).")
+            documents = []
+        except Exception as e:
+            st.error(f"Veri alınırken hata oluştu: {e}")
+            documents = []
+        if documents:
+            document_options = {f"{d['document_id']} - {d['file_path']}": d['document_id'] for d in documents}
+            selected = st.selectbox("Silinecek Doküman", list(document_options.keys()), key="delete_document_select")
+            delete_id = document_options[selected]
+        else:
+            st.success("Silinecek doküman yok.")
+            delete_id = None
+        if st.button("Sil", key="delete_button_documents"):
+            if delete_id:
+                try:
+                    deleted_row = next((d for d in documents if d['document_id'] == delete_id), None)
+                    resp = requests.delete(f"{backend_url}/documents/{delete_id}")
+                    if resp.status_code == 200:
+                        st.session_state["success_message"] = "Kayıt silindi!"
+                        if deleted_row:
+                            st.session_state["last_deleted"] = {"table_name": "Documents", "data": deleted_row}
+                        st.session_state["delete_expander_open"] = True
+                        st.session_state["add_expander_open"] = False
+                        st.session_state["update_expander_open"] = False
+                        st.rerun()
+                    else:
+                        error_text = resp.text
+                        if (
+                            'foreign key constraint' in error_text.lower() or
+                            'is still referenced' in error_text.lower()
+                        ):
+                            st.error('Bu dokümanı silmeden önce, bu dokümana bağlı tüm asistanları ve kullanıcıları silmelisiniz.')
+                        else:
+                            st.error("Kayıt silinemedi: " + error_text)
+                except Exception as e:
+                    st.error(f"Kayıt silinemedi: {e}")
+            else:
+                st.error("Lütfen silinecek ID girin.")
+    elif table_name == "Models":
+        try:
+            response = requests.get(f"{backend_url}/models")
+            response.raise_for_status()
+            models = response.json()
+        except requests.exceptions.JSONDecodeError:
+            st.error("Backend'den geçersiz veri geldi (JSONDecodeError).")
+            models = []
+        except Exception as e:
+            st.error(f"Veri alınırken hata oluştu: {e}")
+            models = []
+        if models:
+            model_options = {f"{m['model_id']} - {m['name']} ({m['provider']})": m['model_id'] for m in models}
+            selected = st.selectbox("Silinecek Model", list(model_options.keys()), key="delete_model_select")
+            delete_id = model_options[selected]
+        else:
+            st.success("Silinecek model yok.")
+            delete_id = None
+        if st.button("Sil", key="delete_button_models"):
+            if delete_id:
+                try:
+                    deleted_row = next((m for m in models if m['model_id'] == delete_id), None)
+                    resp = requests.delete(f"{backend_url}/models/{delete_id}")
+                    if resp.status_code == 200:
+                        st.session_state["success_message"] = "Kayıt silindi!"
+                        if deleted_row:
+                            st.session_state["last_deleted"] = {"table_name": "Models", "data": deleted_row}
+                        st.session_state["delete_expander_open"] = True
+                        st.session_state["add_expander_open"] = False
+                        st.session_state["update_expander_open"] = False
+                        st.rerun()
+                    else:
+                        error_text = resp.text
+                        if (
+                            'foreign key constraint' in error_text.lower() or
+                            'is still referenced' in error_text.lower()
+                        ):
+                            st.error('Bu modeli silmeden önce, bu modele bağlı tüm asistanları ve kullanıcıları silmelisiniz.')
                         else:
                             st.error("Kayıt silinemedi: " + error_text)
                 except Exception as e:
@@ -1603,6 +1913,256 @@ with st.expander("Kayıt Güncelle", expanded=st.session_state.get("update_expan
             if dbinfo_row:
                 try:
                     resp = requests.put(f"{backend_url}/{endpoint}/{update_id}", json=update_data)
+                    if resp.status_code == 200:
+                        st.session_state["success_message"] = "Kayıt güncellendi!"
+                        st.session_state["show_table"] = True
+                        st.rerun()
+                    else:
+                        error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
+                        st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+                        if error_msg and not (isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype'))):
+                            st.error(error_msg)
+                except Exception as e:
+                    st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+        else:
+            pass
+
+    elif table_name == "Data_Prepare_Modules":
+        try:
+            response = requests.get(f"{backend_url}/data_prepare_modules")
+            response.raise_for_status()
+            dpm_modules = response.json()
+        except requests.exceptions.JSONDecodeError:
+            st.error("Backend'den geçersiz veri geldi (JSONDecodeError).")
+            dpm_modules = []
+        except Exception as e:
+            st.error(f"Veri alınırken hata oluştu: {e}")
+            dpm_modules = []
+        users = get_users()
+        assistants = get_assistants()
+        databases = get_database_info()
+        user_options = {f"{u['user_id']} - {u['name']} {u['surname']} ({u['e_mail']})": u['user_id'] for u in users} if users else {}
+        assistant_options = {f"{a['asistan_id']} - {a['title']}": a['asistan_id'] for a in assistants} if assistants else {}
+        database_options = {f"{d['database_id']} - {d['database_name']} ({d['database_ip']}:{d['database_port']})": d['database_id'] for d in databases} if databases else {}
+        # Güncelleme formu
+        form = st.form(key=f"dpm_form_update_{st.session_state.get('dpm_form_key', 0)}")
+        module_id = form.number_input("module_id", min_value=0, step=1, format="%d")
+        # module_id 0 kontrolü (güncelleme)
+        module_id_zero = module_id == 0
+        if module_id_zero:
+            form.markdown('<div style="color:red; font-size:12px;">Module ID 0 olamaz.</div>', unsafe_allow_html=True)
+        query = form.text_area("query")
+        import re
+        query_invalid = False
+        if query and not re.match(r"^[a-zA-Z0-9 .,;:!?'\"()\[\]{}\-_\/\\\n\r]*$", query):
+            query_invalid = True
+            form.markdown('<div style="color:red; font-size:12px;">Lütfen sadece metin ve temel noktalama işaretleri girin.</div>', unsafe_allow_html=True)
+        user_id = form.selectbox("user_id (Users tablosundan)", list(user_options.keys())) if user_options else form.text_input("user_id")
+        asistan_id = form.selectbox("asistan_id (Assistants tablosundan)", list(assistant_options.keys())) if assistant_options else form.text_input("asistan_id")
+        database_id = form.selectbox("database_id (Database Info tablosundan)", list(database_options.keys())) if database_options else form.text_input("database_id")
+        csv_database_id = form.text_input("csv_database_id")
+        # CSV Database ID sadece rakam olmalı (güncelleme)
+        csv_database_id_invalid = csv_database_id and not csv_database_id.isdigit()
+        if csv_database_id_invalid:
+            form.markdown('<div style="color:red; font-size:12px;">Sadece sayı giriniz (ör: 1234)</div>', unsafe_allow_html=True)
+        query_name = form.text_area("query_name", max_chars=255)
+        working_platform = form.text_area("working_platform", max_chars=100)
+        db_schema = form.text_area("db_schema")
+        documents_id = form.text_input("documents_id")
+        documents_id_invalid = documents_id and not documents_id.isdigit()
+        if documents_id_invalid:
+            form.markdown('<div style="color:red; font-size:12px;">Lütfen sadece sayı giriniz (ör: 1234)</div>', unsafe_allow_html=True)
+        csv_db_schema = form.text_area("csv_db_schema")
+        data_prep_code = form.text_area("data_prep_code", height=200, max_chars=1000, help="Buraya Python kodunuzu yazabilirsiniz.")
+        submitted = form.form_submit_button("Güncelle")
+        if submitted:
+            if module_id_zero:
+                form.error("Module ID 0 olamaz. Lütfen 0'dan farklı bir ID girin.")
+                st.stop()
+            if csv_database_id_invalid or documents_id_invalid:
+                form.error("Sayı beklenen alanlara sadece rakam giriniz. (Örneğin: documents_id alanına harf girilemez)")
+                st.stop()
+            else:
+                try:
+                    add_data = {
+                        "module_id": module_id,
+                        "query": query,
+                        "user_id": user_options[user_id] if user_options else int(user_id) if user_id.isdigit() else None,
+                        "asistan_id": assistant_options[asistan_id] if assistant_options else int(asistan_id) if asistan_id.isdigit() else None,
+                        "database_id": database_options[database_id] if database_options else int(database_id) if database_id.isdigit() else None,
+                        "csv_database_id": int(csv_database_id) if csv_database_id.isdigit() else None,
+                        "query_name": query_name,
+                        "working_platform": working_platform,
+                        "db_schema": db_schema,
+                        "documents_id": int(documents_id) if documents_id.isdigit() else None,
+                        "csv_db_schema": csv_db_schema,
+                        "data_prep_code": data_prep_code
+                    }
+                    resp = requests.post(f"{backend_url}/data_prepare_modules", json=add_data)
+                    if resp.status_code == 200:
+                        st.session_state["success_message"] = "Kayıt güncellendi!"
+                        st.session_state["dpm_form_key"] = st.session_state.get('dpm_form_key', 0) + 1
+                        st.session_state['last_table'] = table_name
+                        st.session_state["update_expander_open"] = True
+                        st.session_state["add_expander_open"] = False
+                        st.session_state["delete_expander_open"] = False
+                        st.rerun()
+                    else:
+                        try:
+                            error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
+                            if isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype')):
+                                form.error('Geçersiz giriş, lütfen alanları kontrol edin.')
+                            elif isinstance(error_msg, str) and (
+                                'already exists' in error_msg.lower() or
+                                'duplicate' in error_msg.lower() or
+                                'unique constraint' in error_msg.lower() or
+                                'not unique' in error_msg.lower()
+                            ):
+                                form.error('Bu kayıt zaten mevcut.')
+                            else:
+                                form.error(error_msg)
+                        except Exception:
+                            form.error('Geçersiz giriş, lütfen alanları kontrol edin.')
+                except Exception as e:
+                    form.error(str(e))
+
+    elif table_name == "Documents":
+        try:
+            response = requests.get(f"{backend_url}/documents")
+            response.raise_for_status()
+            documents = response.json()
+        except requests.exceptions.JSONDecodeError:
+            st.error("Backend'den geçersiz veri geldi (JSONDecodeError).")
+            documents = []
+        except Exception as e:
+            st.error(f"Veri alınırken hata oluştu: {e}")
+            documents = []
+        
+        try:
+            users = requests.get(f"{backend_url}/users").json()
+            user_options = {f"{u['user_id']} - {u['name']} {u['surname']}": u['user_id'] for u in users} if users else {}
+        except Exception:
+            user_options = {}
+        
+        try:
+            assistants = requests.get(f"{backend_url}/assistants").json()
+            assistant_options = {f"{a['asistan_id']} - {a['title']}": a['asistan_id'] for a in assistants} if assistants else {}
+        except Exception:
+            assistant_options = {}
+        
+        if documents:
+            document_options = {f"{d['document_id']} - {d['file_path']}": d['document_id'] for d in documents}
+            selected = st.selectbox("Güncellenecek Doküman", list(document_options.keys()), key="update_document_select")
+            update_id = document_options[selected]
+            document_row = next((d for d in documents if d['document_id'] == update_id), None)
+        else:
+            st.success("Güncellenecek doküman yok.")
+            update_id = None
+            document_row = None
+        
+        update_data = {}
+        if document_row:
+            # user_id selectbox
+            if user_options:
+                user_display_list = list(user_options.keys())
+                user_default_index = 0
+                if document_row.get('user_id', None) in user_options.values():
+                    user_default_index = list(user_options.values()).index(document_row.get('user_id', None))
+                user_display = st.selectbox("user_id (Users tablosundan)", user_display_list, index=user_default_index, key="update_document_user_id")
+                update_data['user_id'] = user_options[user_display]
+            else:
+                update_data['user_id'] = st.text_input("user_id", value=str(document_row.get('user_id', '')), key="update_document_user_id_text")
+            
+            # asistan_id selectbox
+            if assistant_options:
+                assistant_display_list = list(assistant_options.keys())
+                assistant_default_index = 0
+                if document_row.get('asistan_id', None) in assistant_options.values():
+                    assistant_default_index = list(assistant_options.values()).index(document_row.get('asistan_id', None))
+                assistant_display = st.selectbox("asistan_id (Assistants tablosundan)", assistant_display_list, index=assistant_default_index, key="update_document_asistan_id")
+                update_data['asistan_id'] = assistant_options[assistant_display]
+            else:
+                update_data['asistan_id'] = st.text_input("asistan_id (opsiyonel)", value=str(document_row.get('asistan_id', '')), key="update_document_asistan_id_text")
+            
+            update_data['file_path'] = st.text_input("file_path", value=document_row.get('file_path', ''), max_chars=500, help="Dosya yolu (zorunlu)")
+            update_data['file_type'] = st.text_input("file_type", value=document_row.get('file_type', ''), max_chars=50, help="Dosya türü (örn: pdf, docx, txt)")
+            update_data['description'] = st.text_area("description", value=document_row.get('description', ''), max_chars=1000, help="Doküman açıklaması")
+        
+        if st.button("Güncelle", key="update_button_documents"):
+            if document_row and not update_data['file_path']:
+                st.error("file_path alanı zorunludur.")
+            elif document_row:
+                try:
+                    resp = requests.put(f"{backend_url}/documents/{update_id}", json=update_data)
+                    if resp.status_code == 200:
+                        st.session_state["success_message"] = "Kayıt güncellendi!"
+                        st.session_state["show_table"] = True
+                        st.session_state["update_expander_open"] = True
+                        st.session_state["add_expander_open"] = False
+                        st.session_state["delete_expander_open"] = False
+                        st.rerun()
+                    else:
+                        error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text
+                        st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+                        if error_msg and not (isinstance(error_msg, str) and (error_msg.strip().lower().startswith('<html') or error_msg.strip().lower().startswith('<!doctype'))):
+                            st.error(error_msg)
+                except Exception as e:
+                    st.error("Kayıt güncellenemedi. Lütfen tüm zorunlu alanları doldurduğunuzdan emin olun.")
+        else:
+            pass
+
+    elif table_name == "Models":
+        try:
+            response = requests.get(f"{backend_url}/models")
+            response.raise_for_status()
+            models = response.json()
+        except requests.exceptions.JSONDecodeError:
+            st.error("Backend'den geçersiz veri geldi (JSONDecodeError).")
+            models = []
+        except Exception as e:
+            st.error(f"Veri alınırken hata oluştu: {e}")
+            models = []
+        
+        if models:
+            model_options = {f"{m['model_id']} - {m['name']} ({m['provider']})": m['model_id'] for m in models}
+            selected = st.selectbox("Güncellenecek Model", list(model_options.keys()), key="update_model_select")
+            update_id = model_options[selected]
+            model_row = next((m for m in models if m['model_id'] == update_id), None)
+        else:
+            st.success("Güncellenecek model yok.")
+            update_id = None
+            model_row = None
+        
+        update_data = {}
+        if model_row:
+            update_data['name'] = st.text_input("name", value=model_row.get('name', ''), max_chars=255, key="update_model_name")
+            update_data['provider'] = st.text_input("provider", value=model_row.get('provider', ''), max_chars=255, key="update_model_provider")
+            update_data['model_version'] = st.text_input("model_version", value=model_row.get('model_version', ''), max_chars=100, key="update_model_version")
+            update_data['is_active'] = st.selectbox("is_active", ["Evet", "Hayır"], index=0 if model_row.get('is_active', True) else 1, key="update_model_is_active") == "Evet"
+            
+            # default_parameters için mevcut değeri göster
+            current_params = model_row.get('default_parameters', {})
+            if isinstance(current_params, str):
+                try:
+                    current_params = json.loads(current_params)
+                except:
+                    current_params = {}
+            current_params_str = json.dumps(current_params, ensure_ascii=False, indent=2) if current_params else "{}"
+            
+            st.markdown("**default_parameters (JSON):**")
+            update_data['default_parameters'] = st.text_area("default_parameters", value=current_params_str, key="update_model_default_parameters")
+        
+        if st.button("Güncelle", key="update_button_model"):
+            if model_row:
+                try:
+                    # JSON validasyonu
+                    try:
+                        json.loads(update_data['default_parameters'])
+                    except:
+                        st.error("default_parameters alanı geçerli bir JSON formatında olmalıdır.")
+                        st.stop()
+                    
+                    resp = requests.put(f"{backend_url}/models/{update_id}", json=update_data)
                     if resp.status_code == 200:
                         st.session_state["success_message"] = "Kayıt güncellendi!"
                         st.session_state["show_table"] = True
