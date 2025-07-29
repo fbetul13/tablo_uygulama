@@ -388,7 +388,7 @@ if st.session_state["show_table"]:
                         doc['assistant_display'] = "Belirtilmemiş"
                 
                 df = pd.DataFrame(data)
-                show_cols = ['document_id', 'user_display', 'assistant_display', 'file_path', 'file_type', 'upload_date', 'description']
+                show_cols = ['document_id', 'user_display', 'assistant_display', 'file_path', 'file_type', 'description']
                 show_cols = [c for c in show_cols if c in df.columns]
                 st.dataframe(df[show_cols])
             elif table_name == "Models":
@@ -1561,6 +1561,9 @@ with st.expander("Kayıt Güncelle", expanded=st.session_state.get("update_expan
                     if resp.status_code == 200:
                         st.session_state["success_message"] = "Kayıt güncellendi!"
                         st.session_state["show_table"] = True
+                        st.session_state["update_expander_open"] = True
+                        st.session_state["add_expander_open"] = False
+                        st.session_state["delete_expander_open"] = False
                         st.rerun()
                     else:
                         error_msg = resp.json().get('error') if resp.headers.get('Content-Type','').startswith('application/json') else resp.text

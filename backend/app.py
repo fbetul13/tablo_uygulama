@@ -560,7 +560,7 @@ def get_documents():
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
-        cur.execute('SELECT * FROM documents ORDER BY upload_date DESC')
+        cur.execute('SELECT * FROM documents ORDER BY document_id DESC')
         records = cur.fetchall()
         cur.close()
         conn.close()
