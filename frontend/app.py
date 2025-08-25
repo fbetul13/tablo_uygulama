@@ -5,6 +5,12 @@ import json
 import re
 import time
 
+# Session state'i başlat
+if 'table_name' not in st.session_state:
+    st.session_state['table_name'] = 'Roles'
+if 'show_table' not in st.session_state:
+    st.session_state['show_table'] = False
+
 table_options = {
     "Roles": {
         "endpoint": "roles",
@@ -107,7 +113,7 @@ table_options = {
 }
 
 # Streamlit frontend'de backend'e istek atmak için:
-backend_url = "http://tablo_uygulama-backend-1:8000" 
+backend_url = "http://backend:8000" 
 
 # --- BAŞARI MESAJI BLOĞU ---
 if "success_message" in st.session_state:
@@ -307,6 +313,14 @@ if st.button("Verileri Listele"):
 if st.session_state["show_table"]:
     try:
         resp = requests.get(f"{backend_url}/{endpoint}")
+        if resp.status_code != 200:
+            st.error(f"Backend {resp.status_code} döndürdü. İçerik: {resp.text}")
+        else:
+            try:
+                data = resp.json()
+            except Exception as e:
+                st.error(f"JSON parse hatası: {e}. Dönen içerik: {resp.text[:200]}")
+                data = resp.json()
        
         data = resp.json()
         if isinstance(data, list) and data:
